@@ -11,12 +11,29 @@ class WelcomeWindow(QMainWindow):
         self.setWindowTitle("Welcome")
         self.setGeometry(100, 100, 600, 400)
 
-        self.label_welcome = QLabel("Welcome to the Application!", self)
-        self.label_welcome.setGeometry(200, 50, 200, 30)
+        # Add label for the title "GenreDiscern"
+        self.label_title = QLabel("<html><b>GenreDiscern</b></html>", self)
+        self.label_title.setGeometry(200, 50, 200, 30)
 
+        # Add label for authors and version
+        self.label_info = QLabel("By: Eric and Rebecca <br>Version: 1.0.0", self)
+        self.label_info.setGeometry(200, 80, 200, 50)
+
+        # Add image label
+        self.label_image = QLabel(self)
+        self.label_image.setGeometry(150, 130, 300, 200)  # Adjust position and size as needed
+        pixmap = QPixmap('img/gd_logo.jpeg').scaled(300, 200)  # Scale the image to fit the label
+        self.label_image.setPixmap(pixmap)
+
+        # Add Start button
         self.button_start = QPushButton("Start", self)
-        self.button_start.setGeometry(250, 200, 100, 30)
+        self.button_start.setGeometry(200, 340, 100, 30)  # Adjust position as needed
         self.button_start.clicked.connect(self.start_application)
+
+        # Add Quit button
+        self.button_quit = QPushButton("Quit", self)
+        self.button_quit.setGeometry(320, 340, 100, 30)  # Adjust position as needed
+        self.button_quit.clicked.connect(QApplication.instance().quit)
 
     def start_application(self):
         self.close()  # Close the welcome window
