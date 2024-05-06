@@ -85,15 +85,15 @@ python3 run_GenreDiscern.py
 
 #### Pre-process sorted music dataset
 
-Simply click
+Simply click "MFCC Extraction" from the Hub Window.
 
 ### Train a model
 
-Simply click
+Simply click "Train Model" from the Hub Window.
 
 #### Sort music using trained model
 
-Simply click
+Simply click "Execute Sort" from the Hub Window.
 
 ## Repository Files
 
