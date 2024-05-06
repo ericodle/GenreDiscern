@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="imgs/gd_logo.jpeg" width="350" title="logo">
+</p>
+
 # GenreDiscern
 Music genre discriminator via artifical neural network modeling
 
