@@ -93,28 +93,24 @@ Simply click "Train Model" from the Hub Window.
 
 #### Sort music using trained model
 
-Simply click "Execute Sort" from the Hub Window.
+(Feature coming soon)
 
 ## Repository Files
 
 - [ ] train_model.py
 
-This script can be called to train a pre-defined neural network class on labeled MFCC data. Upon training completion, the user will be provided a graph of both training and validation following each train epoch. This graph can be useful in diagnosing neural network issues such as overfitting.
-
-- [ ] model_sort.py
-
-This script can be called to sort songs; intended for future work.
-
+This script is called to train a neural network class on labeled MFCC data.
 - [ ] models.py
 
-This script defines the artificial neural network architectures used in our study. Classes for MLP, CNN, LSTM, BiLSTM, and GRU models are written using PyTorch, which we chose over Keras for its greater granular control.
+This script defines the artificial neural network architectures.
 
 - [ ] MFCC_extraction.py
 
-This script extracts MFCCs from a music dataset.
+This script extracts MFCCs from a curated dataset.
 
-- [ ] MFCC_primer.ipynb
+- [ ] model_sort.py
 
+This script is called to sort songs by genre (future project).
 
 ## Citing Our Research
 
