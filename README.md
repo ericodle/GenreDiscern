@@ -30,9 +30,6 @@ Open the command line interface and run:
   git clone https://github.com/ericodle/GenreDiscern.git
   ```
 
-You have now downloaded the entire project, including all its sub-directories (folders) and files.
-(We will avoid using Git commands.)
-
 ### Step 2: Navigate to the project directory
 Find where your computer saved the project, then enter:
 
@@ -47,7 +44,8 @@ user@user:~/GenreDiscern-main$
 ```
 
 ### Step 3: Create a virtual environment: 
-Use a **virtual environment** so library versions on your computer match the versions used during development and testing.
+I like to use a **virtual environment**.
+Let's make one called "gd-env"
 
 
 ```sh
@@ -55,7 +53,7 @@ python3 -m venv gd-env
 ```
 
 A virtual environment named "gd-env" has been created. 
-Enter the environment to do our work by using the following command:
+Let's enter the environment to do our work:
 
 
 ```sh
@@ -70,10 +68,19 @@ When performed correctly, your command line interface prompt should look like
 
 ### Step 3: Install requirements.txt
 
-Avoid dependency hell by installing specific software versions known to work well together.
+Next, let's install specific software versions so everything works properly.
 
   ```sh
-pip install -r requirements.txt
+pip3 install -r requirements.txt
+  ```
+
+### Step 4: Run GenreDiscern
+
+This project has a GUI for easy use.
+Activate the GUI by running the following terminal command:
+
+  ```sh
+python3 run_GenreDiscern.py
   ```
 
 #### Pre-process sorted music dataset
