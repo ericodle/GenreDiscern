@@ -22,7 +22,7 @@ class WelcomeWindow(QMainWindow):
         # Add image label
         self.label_image = QLabel(self)
         self.label_image.setGeometry(150, 130, 300, 200)  # Adjust position and size as needed
-        pixmap = QPixmap('img/gd_logo.jpeg').scaled(300, 200)  # Scale the image to fit the label
+        pixmap = QPixmap('img/gd_logo.png').scaled(300, 300)  # Scale the image to fit the label
         self.label_image.setPixmap(pixmap)
 
         # Add Start button
