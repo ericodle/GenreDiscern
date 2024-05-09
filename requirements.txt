@@ -31,7 +31,6 @@ cycler==0.12.1
 dataclasses==0.6
 dbus-python==1.2.18
 decorator==5.1.1
-DeepLoc2 @ file:///home/koc/Trinity_programs/deeploc2_package
 defer==1.0.6
 distro==1.7.0
 dnspython==2.1.0
