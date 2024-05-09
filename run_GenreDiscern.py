@@ -113,11 +113,11 @@ class PreprocessMFCCWindow(QMainWindow):
         self.line_edit_filename.setGeometry(300, 150, 250, 30)
 
         # Buttons
-        self.button_browse_dataset = QPushButton("Browse", self)
+        self.button_browse_dataset = QPushButton("Go", self)
         self.button_browse_dataset.setGeometry(560, 50, 30, 30)
         self.button_browse_dataset.clicked.connect(self.browse_dataset)
 
-        self.button_browse_output = QPushButton("Browse", self)
+        self.button_browse_output = QPushButton("Go", self)
         self.button_browse_output.setGeometry(560, 100, 30, 30)
         self.button_browse_output.clicked.connect(self.browse_output)
 
