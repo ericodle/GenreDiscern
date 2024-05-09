@@ -24,6 +24,23 @@ If the first number is not a 3, update to Python3.
 
 ## Setup
 
+### For Mac users
+Newer versions of Python lack certain SSL (secure sockets layer) certificates on MacOS.
+To correct this, perform the following steps in your working environment:
+#### Step 1: Install certifi
+  ```sh
+  python3 -m pip3 install --upgrade pip3 
+  pip3 install --upgrade certifi
+  ```
+#### Step 2: Configure system SSL certificates
+Find the path to your Python distribution's Certificates.command, then enter the following command.
+Our system used Python 3.12, therefore the command looked like this:
+
+  ```sh
+  sudo /Applications/Python\ 3.12/Install\ Certificates.command
+  ```
+Your system should now have the required SSL certificates
+
 Here is an easy way to use our GitHub repository.
 
 ### Step 1: Clone the repository
