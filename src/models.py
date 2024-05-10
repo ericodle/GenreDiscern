@@ -1,4 +1,8 @@
 import sys
+
+sys.path.append('./')
+sys.path.append('./src/')
+
 import os
 import json
 import numpy as np
@@ -10,9 +14,6 @@ from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.nn import functional as F
 from src import models
-
-sys.path.append('./')
-sys.path.append('./src/')
 
 ################################################
 #       　   Fully Connected    　 　   #
@@ -216,9 +217,9 @@ class Tr_FC(nn.Module):
 #       　        Tr_CNN           　 　   #
 ################################################
 
-class Tr_FC(nn.Module):
+class Tr_CNN(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_layers, num_heads, ff_dim, output_dim, dropout):
-        super(Tr_FC, self).__init__()
+        super(Tr_CNN, self).__init__()
         self.input_dim = input_dim
         self.transformer_layers = nn.ModuleList(
             [TransformerLayer(input_dim, hidden_dim, num_heads, ff_dim, dropout) for _ in range(num_layers)]
@@ -304,5 +305,4 @@ class Tr_GRU(nn.Module):
         gru_out = self.gru(x)
         
         return F.log_softmax(gru_out, dim=1)
-
 
