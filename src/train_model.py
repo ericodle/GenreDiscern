@@ -1,6 +1,8 @@
 import sys
+
 sys.path.append('./')
-#sys.path.append('./src/')
+sys.path.append('./src/')
+
 
 import os
 import json
@@ -23,6 +25,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torchvision import transforms
 
 from src import models
+
 # Ensure that all operations are deterministic on GPU (if used) for reproducibility
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -313,11 +316,11 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     elif model_type == "Tr_FC":
         model = models.Tr_FC(input_dim=13, hidden_dim=256, num_layers=4, num_heads=1, ff_dim=4, dropout=0.2, output_dim=10)
     elif model_type == "Tr_CNN":
-        model = models.Tr_FC(input_dim=13, hidden_dim=256, num_layers=4, num_heads=1, ff_dim=4, dropout=0.2, output_dim=10)
+        model = models.Tr_CNN(input_dim=13, hidden_dim=256, num_layers=4, num_heads=1, ff_dim=4, dropout=0.2, output_dim=10)
     elif model_type == "Tr_LSTM":
-        model = models.Tr_FC(input_dim=13, hidden_dim=256, num_layers=4, num_heads=1, ff_dim=4, dropout=0.2, output_dim=10)
+        model = models.Tr_LSTM(input_dim=13, hidden_dim=256, num_layers=4, num_heads=1, ff_dim=4, dropout=0.2, output_dim=10)
     elif model_type == "Tr_GRU":
-        model = models.Tr_FC(input_dim=13, hidden_dim=256, num_layers=4, num_heads=1, ff_dim=4, dropout=0.2, output_dim=10)
+        model = models.Tr_GRU(input_dim=13, hidden_dim=256, num_layers=4, num_heads=1, ff_dim=4, dropout=0.2, output_dim=10)
     else:
         raise ValueError("Invalid model_type")
 
@@ -925,4 +928,3 @@ if __name__ == '__main__':
 
     # Call main function with provided arguments
     main(mfcc_path, model_type, output_directory, initial_lr)
-
