@@ -1,8 +1,5 @@
 import sys
 
-sys.path.append('./')
-sys.path.append('./src/')
-
 import os
 import json
 import numpy as np
@@ -13,7 +10,8 @@ from torchvision import transforms
 from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.nn import functional as F
-from src import models
+
+import models
 
 ################################################
 #       　   Fully Connected    　 　   #

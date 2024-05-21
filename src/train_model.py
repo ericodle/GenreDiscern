@@ -1,9 +1,5 @@
 import sys
 
-sys.path.append('./')
-sys.path.append('./src/')
-
-
 import os
 import json
 import numpy as np
@@ -24,7 +20,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset 
 from torchvision import transforms
 
-from src import models
+import models
 
 # Ensure that all operations are deterministic on GPU (if used) for reproducibility
 torch.backends.cudnn.deterministic = True
