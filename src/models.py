@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.nn import functional as F
 
-import models
+from . import models
 
 ################################################
 #       　   Fully Connected    　 　   #
