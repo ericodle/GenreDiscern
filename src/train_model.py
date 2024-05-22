@@ -20,7 +20,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset 
 from torchvision import transforms
 
-import models
+from . import models
 
 # Ensure that all operations are deterministic on GPU (if used) for reproducibility
 torch.backends.cudnn.deterministic = True
