@@ -5,7 +5,7 @@ from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
 from subprocess import Popen, PIPE
 
-import MFCC_extraction, models, model_sort, train_model
+from . import MFCC_extraction, models, model_sort, train_model
 
 class WelcomeWindow(QMainWindow):
     def __init__(self):
