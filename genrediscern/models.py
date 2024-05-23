@@ -1,17 +1,9 @@
-import sys
+################################################
+#       　   IMPORT LIBRARIES    　 　   #
+################################################
 
-import os
-import json
-import numpy as np
 import torch
-from torch import nn, optim
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from sklearn.model_selection import train_test_split
-from torch.optim.lr_scheduler import _LRScheduler
-from torch.nn import functional as F
-
-from . import models
+from torch import nn
 
 ################################################
 #       　   Fully Connected    　 　   #
@@ -303,4 +295,3 @@ class Tr_GRU(nn.Module):
         gru_out = self.gru(x)
         
         return F.log_softmax(gru_out, dim=1)
-
