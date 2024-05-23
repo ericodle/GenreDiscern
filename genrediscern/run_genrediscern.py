@@ -1,11 +1,17 @@
-import sys
+########################################################################
+# IMPORT LIBRARIES
+########################################################################
 
+import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QFileDialog, QLineEdit, QInputDialog, QMessageBox
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
 from subprocess import Popen, PIPE
+import MFCC_extraction, models, model_sort, train_model
 
-from . import MFCC_extraction, models, model_sort, train_model
+########################################################################
+# WINDOW SYSTEM
+########################################################################
 
 class WelcomeWindow(QMainWindow):
     def __init__(self):
