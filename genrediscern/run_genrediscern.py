@@ -3,15 +3,27 @@
 ########################################################################
 
 import sys
+import os
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QFileDialog, QLineEdit, QInputDialog, QMessageBox
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
 from subprocess import Popen, PIPE
-import MFCC_extraction, models, model_sort, train_model
+from genrediscern import MFCC_extraction, models, model_sort, train_model
 
 ########################################################################
 # WINDOW SYSTEM
 ########################################################################
+
+################################################################################################################################
+################################################################################################################################
+
+# Get the directory path of the current script
+base_dir = os.path.abspath(__file__)
+#print(base_dir)
+
+################################################################################################################################
+################################################################################################################################
+
 
 class WelcomeWindow(QMainWindow):
     def __init__(self):
@@ -24,13 +36,19 @@ class WelcomeWindow(QMainWindow):
         self.label_title.setGeometry(200, 50, 200, 30)
 
         # Add label for authors and version
-        self.label_info = QLabel("By: Eric and Rebecca <br>Version: 1.0.0", self)
+        self.label_info = QLabel("By: Eric and Rebecca <br>Version: 0.1.0", self)
         self.label_info.setGeometry(200, 80, 200, 50)
 
         # Add image label
         self.label_image = QLabel(self)
         self.label_image.setGeometry(150, 130, 300, 200)  # Adjust position and size as needed
-        pixmap = QPixmap('img/gd_logo.png').scaled(300, 300)  # Scale the image to fit the label
+
+        # Construct the image path based on base_dir
+        image_path = os.path.join(base_dir, 'img', 'gd_logo.png')
+
+        # Load the image into QPixmap
+        pixmap = QPixmap(image_path).scaled(300, 300)  # Scale the image to fit the label
+
         self.label_image.setPixmap(pixmap)
 
         # Add Start button
@@ -268,8 +286,15 @@ class ExecuteSortWindow(QMainWindow):
         self.hub_window = HubWindow()
         self.hub_window.show()
 
-if __name__ == "__main__":
+
+################################################################################################################################
+################################################################################################################################
+
+def main():
     app = QApplication(sys.argv)
     welcome_window = WelcomeWindow()
     welcome_window.show()
     sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    main()
