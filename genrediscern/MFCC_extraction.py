@@ -1,13 +1,24 @@
+########################################################################
+# IMPORT LIBRARIES
+########################################################################
+
 import sys
 import json
 import os
-import math
 import librosa
+
+########################################################################
+# CONSTANT VARIABLES
+########################################################################
 
 # Constants for audio processing.
 SAMPLE_RATE = 22050  # Standard sample rate for GTZAN audio data.
 SONG_LENGTH = 30  # Duration of each song clip in seconds.
 SAMPLE_COUNT = SAMPLE_RATE * SONG_LENGTH  # Total number of samples per clip.
+
+########################################################################
+# MODULE FUNCTIONS
+########################################################################
 
 def mfcc_to_json(music_path, output_path, output_filename, mfcc_count=13, n_fft=2048, hop_length=512, seg_length=30):
 
@@ -90,4 +101,3 @@ if __name__ == "__main__":
 
     # Call the function with the specified arguments
     mfcc_to_json(music_path, output_path, output_filename)
-
