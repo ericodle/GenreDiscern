@@ -1,25 +1,17 @@
-import sys
+########################################################################
+# IMPORT LIBRARIES
+########################################################################
 
+import sys
 import os
 import torch
 import json
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import joblib
-
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-
-from torch import nn
-import torch.optim as optim
-from torch.optim.lr_scheduler import _LRScheduler
-import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset 
-from torchvision import transforms
+
+########################################################################
+# INTENDED FOR USE WITH CUDA
+########################################################################
 
 # Ensure that all operations are deterministic on GPU (if used) for reproducibility
 torch.backends.cudnn.deterministic = True
@@ -29,10 +21,15 @@ torch.backends.cudnn.benchmark = False
 device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda:0")
 print("Using device", device)
 
-
+########################################################################
+# MODULE FUNCTIONS
+########################################################################
 
 def print_data_shape(data_path):
-    # Load the JSON data
+    '''
+    This function loads JSON data from a specified file path and prints the shape of the 'mfcc' array in terms of samples, frames, and MFCC features. 
+    It also prints the total number of 'labels' and the count of unique labels present in the data.
+    '''
     with open(data_path, 'r') as file:
         data = json.load(file)
 
@@ -43,7 +40,10 @@ def print_data_shape(data_path):
 
 
 def load_model(model_path):
-    """Load the trained model."""
+    """
+    This function attempts to load a trained model from a specified file path. 
+    If the model file does not exist, it prints an error message and exits the program; otherwise, it loads the model, sets it to evaluation mode, and returns it.
+    """
     if not os.path.exists(model_path):
         print(f"Model file '{model_path}' not found.")
         sys.exit(1)
@@ -54,7 +54,10 @@ def load_model(model_path):
     return model
 
 def load_data(data_path):
-    """Loads training dataset from json file."""
+    """
+    This function loads MFCCs (Mel Frequency Cepstral Coefficients) and their corresponding labels from a JSON file. 
+    It reads the data from the file, converts the 'mfcc' and 'labels' entries into NumPy arrays X and y, respectively.
+    """
     with open(data_path, "r") as fp:
         data = json.load(fp)
 
@@ -78,7 +81,12 @@ def load_data(data_path):
     return X, y
 
 def model_sort(model, test_dataloader, class_names, device='cpu'):
-    """Sort the model predictions."""
+    """
+    This  function takes a trained model, a test dataloader, class names, and an optional device specification. 
+    It sets the model to evaluation mode and iterates through the test dataloader to make predictions. 
+    The function reshapes the input data, computes predictions using the model, and stores them. 
+    Finally, it converts the predicted indices to corresponding class labels using the provided class_names and returns the list of predicted labels.
+    """
     model.eval()    
     preds = []  # Initialize list to store predictions
 
@@ -95,12 +103,22 @@ def model_sort(model, test_dataloader, class_names, device='cpu'):
     predicted_labels = [class_names[idx] for idx in predicted_indices]
     return predicted_labels
 
+########################################################################
+# MAIN
+########################################################################
 
 def main(model_path, data_path, output_path):
 
     print_data_shape(data_path)
 
-    """Main function to perform genre prediction."""
+    """
+    The main function coordinates the genre prediction process using a trained model and a dataset of MFCCs and labels stored in JSON format. 
+    It first prints the shape of the data loaded from data_path. 
+    Then, it loads the specified model_path and prints a confirmation message upon successful loading. 
+    After loading the data, it converts it into PyTorch tensors and creates a DataLoader object for batching. 
+    The function then initiates genre prediction using the model_sort function and saves the predicted genres to the specified output_path as a text file. 
+    Finally, it prints a confirmation message indicating where the predictions were saved.
+    """
     # Define class names
     class_names = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
 
@@ -133,4 +151,3 @@ if __name__ == "__main__":
     data_path = sys.argv[2]
     output_path = sys.argv[3]
     main(model_path, data_path, output_path)
-
