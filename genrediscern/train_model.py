@@ -1,26 +1,27 @@
-import sys
+########################################################################
+# IMPORT LIBRARIES
+########################################################################
 
+import sys
 import os
 import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import joblib
-
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score, roc_curve, auc
-
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve, auc
 import torch
 from torch import nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset 
-from torchvision import transforms
+import models
 
-from . import models
+########################################################################
+# INTENDED FOR USE WITH CUDA
+########################################################################
 
 # Ensure that all operations are deterministic on GPU (if used) for reproducibility
 torch.backends.cudnn.deterministic = True
@@ -30,8 +31,16 @@ torch.backends.cudnn.benchmark = False
 device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda:0")
 print("Using device", device)
 
-def load_data(data_path):
+########################################################################
+# MODULE FUNCTIONS
+########################################################################
 
+def load_data(data_path):
+    '''
+    This function loads data from a JSON file located at data_path. 
+    It converts the 'mfcc' and 'labels' lists from the JSON file into NumPy arrays X and y, respectively. 
+    After loading the data, it prints a success message indicating that the data was loaded successfully.
+    '''
     with open(data_path, "r") as fp:
         data = json.load(fp)
 
@@ -44,6 +53,9 @@ def load_data(data_path):
     return X, y
 
 def test_ann_model(model, test_dataloader, device='cpu'):
+    '''
+    This function evaluates an artificial neural network (ann) using a test dataloader. 
+    '''
     model.eval()
     count = 0
     correct = 0
@@ -77,6 +89,9 @@ def test_ann_model(model, test_dataloader, device='cpu'):
     return ground_truth, predicted_genres, predicted_probs, accuracy
 
 def test_recurrent_model(model, test_dataloader, device='cpu'):
+    '''
+    This function evaluates a recurrent neural network (rnn) using a test dataloader. 
+    '''
     model.eval()
     count = 0
     correct = 0
@@ -113,6 +128,9 @@ def test_recurrent_model(model, test_dataloader, device='cpu'):
     return ground_truth, predicted_genres, predicted_probs, accuracy
 
 def test_transformer_model(model, test_dataloader, device='cpu'):
+    '''
+    This function evaluates a transformer network using a test dataloader. 
+    '''
     model.eval()
     count = 0
     correct = 0
@@ -148,6 +166,9 @@ def test_transformer_model(model, test_dataloader, device='cpu'):
     return ground_truth, predicted_genres, predicted_probs, accuracy
 
 def calculate_roc_auc(y_true, y_probs):
+    '''
+    Calculates class-wise ROC AUC scores. 
+    '''
     roc_auc_scores = []
     for class_idx in range(y_probs.shape[1]):
         roc_auc = roc_auc_score(y_true == class_idx, y_probs[:, class_idx])
@@ -155,6 +176,9 @@ def calculate_roc_auc(y_true, y_probs):
     return roc_auc_scores
 
 def plot_roc_curve(y_true, y_probs, class_names, output_directory):
+    '''
+    Plots class-wise ROC AUC scores. 
+    '''
     auc_file = os.path.join(output_directory, 'auc.txt')
     with open(auc_file, 'w') as f:
         for class_idx in range(y_probs.shape[1]):
@@ -176,6 +200,9 @@ def plot_roc_curve(y_true, y_probs, class_names, output_directory):
     plt.close()
 
 def save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory):
+    '''
+    Saves image of confusion matrix. 
+    '''
     # Compute confusion matrix
     arr = confusion_matrix(ground_truth.view(-1).detach().cpu().numpy(), predicted_genres.view(-1).detach().cpu().numpy())
     
@@ -207,15 +234,24 @@ def save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, outpu
 
 
 def train_val_split(X, y, val_ratio):
+    '''
+    This function splits the input data X and y into training and validation sets using a specified val_ratio.
+    '''
     train_ratio = 1 - val_ratio
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=val_ratio, shuffle=True)
     return X_train, X_val, y_train, y_val
 
 def accuracy(out, labels):
+    '''
+    This function calculates prediction accuracy.
+    '''
     _, pred = torch.max(out, dim=1)
     return torch.sum(pred == labels).item()
 
 class CyclicLR(_LRScheduler):
+    '''
+    This class implements a cyclic learning rate scheduler (_LRScheduler) that adjusts the learning rates of the optimizer based on a provided schedule function (schedule).
+    '''
     def __init__(self, optimizer, schedule, last_epoch=-1):
         assert callable(schedule)
         self.schedule = schedule
@@ -225,6 +261,11 @@ class CyclicLR(_LRScheduler):
         return [self.schedule(self.last_epoch, lr) for lr in self.base_lrs]
 
 def cosine(t_max, eta_min=0):
+    '''
+    This function returns a learning rate scheduler function based on the cosine annealing schedule.
+    This gradually decreases the learning rate from base_lr to eta_min over t_max epochs.
+    '''
+
     def scheduler(epoch, base_lr):
         t = epoch % t_max
         return eta_min + (base_lr - eta_min) * (1 + np.cos(np.pi * t / t_max)) / 2
@@ -232,6 +273,9 @@ def cosine(t_max, eta_min=0):
 
 
 def plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory):
+    '''
+    This function generates a plot visualizing the training and validation loss along with training and validation accuracy across epochs, and saves the plot as a PNG file.
+    '''
     epochs = range(1, len(train_loss) + 1)
 
     fig, ax1 = plt.subplots(figsize=(10, 5), dpi=600)
@@ -257,7 +301,16 @@ def plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_direc
     plt.savefig(os.path.join(output_directory, "learning_metrics.png"), bbox_inches='tight')  # Use bbox_inches='tight' to prevent cutting off
     plt.close()
 
+########################################################################
+# MAIN
+########################################################################
+
 def main(mfcc_path, model_type, output_directory, initial_lr):
+    '''
+    Main function for training and evaluating multiple deep learning models (Fully Connected, CNN, LSTM, GRU, and Transformer) for music genre classification using Mel Frequency Cepstral Coefficients (MFCCs). 
+    This function employs PyTorch for model training and evaluation, utilizes cyclic learning rates for optimization, and includes functionalities for plotting learning metrics, testing model accuracy, generating confusion matrices, and computing ROC AUC scores. 
+    The training loop incorporates early stopping based on validation accuracy to prevent overfitting and improve model generalization.
+    '''
     # load data
     X, y = load_data(mfcc_path)
 
@@ -369,7 +422,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             if vacc > best_acc:
                 trials = 0
                 best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model"))
+                torch.save(model, os.path.join(output_directory, "model.bin"))
                 print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
             else:
                 trials += 1
@@ -422,7 +475,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             if vacc > best_acc:
                 trials = 0
                 best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model"))
+                torch.save(model, os.path.join(output_directory, "model.bin"))
                 print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
             else:
                 trials += 1
@@ -470,7 +523,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             if vacc > best_acc:
                 trials = 0
                 best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model"))
+                torch.save(model, os.path.join(output_directory, "model.bin"))
                 print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
             else:
                 trials += 1
@@ -518,7 +571,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             if vacc > best_acc:
                 trials = 0
                 best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model"))
+                torch.save(model, os.path.join(output_directory, "model.bin"))
                 print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
             else:
                 trials += 1
@@ -566,7 +619,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             if vacc > best_acc:
                 trials = 0
                 best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model"))
+                torch.save(model, os.path.join(output_directory, "model.bin"))
                 print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
             else:
                 trials += 1
@@ -614,7 +667,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             if vacc > best_acc:
                 trials = 0
                 best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model"))
+                torch.save(model, os.path.join(output_directory, "model.bin"))
                 print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
             else:
                 trials += 1
@@ -662,7 +715,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             if vacc > best_acc:
                 trials = 0
                 best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model"))
+                torch.save(model, os.path.join(output_directory, "model.bin"))
                 print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
             else:
                 trials += 1
@@ -710,7 +763,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             if vacc > best_acc:
                 trials = 0
                 best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model"))
+                torch.save(model, os.path.join(output_directory, "model.bin"))
                 print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
             else:
                 trials += 1
