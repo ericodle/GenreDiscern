@@ -43,56 +43,26 @@ Your system should now have the required SSL certificates
 
 Here is an easy way to use our GitHub repository.
 
-### Step 1: Clone the repository
+### Install with pip
 
+This is the easiest way to install GenreDiscern.
 
-Open the command line interface and run:
+#### Step 1: Set up a virtual environment.
+
   ```sh
-  git clone https://github.com/ericodle/GenreDiscern.git
+  python3 -m venv env
   ```
 
-### Step 2: Navigate to the project directory
-Find where your computer saved the project, then enter:
+#### Step 2: Activate the virtual environment.
 
   ```sh
-  cd /path/to/project/directory
+  source env/bin/activate
   ```
 
-If performed correctly, your command line interface should resemble
-
-```
-user@user:~/GenreDiscern-main$
-```
-
-### Step 3: Create a virtual environment: 
-I like to use a **virtual environment**.
-Let's make one called "gd-env"
-
-
-```sh
-python3 -m venv gd-env
-```
-
-A virtual environment named "gd-env" has been created. 
-Let's enter the environment to do our work:
-
-
-```sh
-source gd-env/bin/activate
-```
-
-When performed correctly, your command line interface prompt should look like 
-
-```
-(gd-env) user@user:~/GenreDiscern-main$
-```
-
-### Step 3: Install requirements.txt
-
-Next, let's install specific software versions so everything works properly.
+#### Step 3: Install GenreDiscern using pip
 
   ```sh
-pip3 install -r requirements.txt
+  pip3 install genrediscern
   ```
 
 ### Step 4: Run GenreDiscern
@@ -101,12 +71,12 @@ This project has a GUI for easy use.
 Activate the GUI by running the following terminal command:
 
   ```sh
-python3 run_GenreDiscern.py
+genrediscern
   ```
 
 #### Pre-process sorted music dataset
 
-Simply click "MFCC Extraction" from the Hub Window.
+Click "MFCC Extraction" from the Hub Window.
 
 ### Train a model
 
