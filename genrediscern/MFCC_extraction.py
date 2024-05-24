@@ -87,17 +87,18 @@ def mfcc_to_json(music_path, output_path, output_filename, mfcc_count=13, n_fft=
     except Exception as e:
         print(f"Error writing data to {output_file_path}: {e}")
 
+def main(music_path, output_path, output_filename):
+    mfcc_to_json(music_path, output_path, output_filename)
+
 if __name__ == "__main__":
     # Retrieve command-line arguments
     args = sys.argv[1:]
-
+    
     # Check if there are command-line arguments
-    if len(args) >= 1:
-        music_path = args[0]  
-    if len(args) >= 2:
-        output_path = args[1] 
     if len(args) >= 3:
+        music_path = args[0]
+        output_path = args[1]
         output_filename = args[2]
-
-    # Call the function with the specified arguments
-    mfcc_to_json(music_path, output_path, output_filename)
+        main(music_path, output_path, output_filename)
+    else:
+        print("Please provide all required arguments: music_path, output_path, output_filename")
