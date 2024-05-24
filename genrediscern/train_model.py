@@ -346,7 +346,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     val_acc = []
 
     # Training hyperparameters
-    lr = initial_lr
+    initial_lr = float(initial_lr)
     n_epochs = 10000
     iterations_per_epoch = len(train_dataloader)
     best_acc = 0
@@ -372,11 +372,15 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
         model = models.Tr_GRU(input_dim=13, hidden_dim=256, num_layers=4, num_heads=1, ff_dim=4, dropout=0.2, output_dim=10)
     else:
         raise ValueError("Invalid model_type")
-
+ 
     model = model.to(device)
+
     criterion = nn.CrossEntropyLoss()
-    opt = torch.optim.RMSprop(model.parameters(), lr=lr)
-    sched = CyclicLR(opt, cosine(t_max=iterations_per_epoch * 2, eta_min=lr / 100))
+
+    opt = torch.optim.RMSprop(model.parameters(), initial_lr)
+
+    sched = CyclicLR(opt, cosine(t_max=iterations_per_epoch * 2, eta_min= initial_lr / 100))
+
     print(f'Training {model_type} model with learning rate of {initial_lr}.')
 
     if model_type == "FC":
@@ -969,11 +973,15 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
         plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
 
 if __name__ == '__main__':
-    # Pass arguments via command line arguments when running the script
-    mfcc_path = sys.argv[1]
-    model_type = sys.argv[2] 
-    output_directory = sys.argv[3] 
-    initial_lr = float(sys.argv[4]) 
+    # Retrieve command-line arguments
+    args = sys.argv[1:]
 
-    # Call main function with provided arguments
-    main(mfcc_path, model_type, output_directory, initial_lr)
+    # Check if there are command-line arguments
+    if len(args) >= 4:
+        mfcc_path = args[0]
+        model_type = args[1]
+        output_directory = args[2]
+        initial_lr = float(args[3])
+        main(mfcc_path, model_type, output_directory, initial_lr)
+    else:
+        print("Please provide all required arguments: mfcc_path, model_type, output_directory, initial_lr")
