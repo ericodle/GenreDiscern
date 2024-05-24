@@ -4,11 +4,10 @@
 
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QFileDialog, QLineEdit, QInputDialog, QMessageBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QFileDialog, QLineEdit, QInputDialog
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
-from subprocess import Popen, PIPE
-from genrediscern import MFCC_extraction, models, model_sort, train_model
+from genrediscern import MFCC_extraction, train_model
 
 ########################################################################
 # WINDOW SYSTEM
@@ -18,8 +17,7 @@ from genrediscern import MFCC_extraction, models, model_sort, train_model
 ################################################################################################################################
 
 # Get the directory path of the current script
-base_dir = os.path.abspath(__file__)
-#print(base_dir)
+base_dir = os.path.dirname(os.path.abspath(__file__))
 
 ################################################################################################################################
 ################################################################################################################################
@@ -168,14 +166,13 @@ class PreprocessMFCCWindow(QMainWindow):
         if not self.dataset_path or not self.output_path or not self.filename:
             print("Please fill in all fields.")
             return
-
-        # Call MFCC_extraction.py script with the provided arguments
-        process = Popen(["python3", "src/MFCC_extraction.py", self.dataset_path, self.output_path, self.filename], stdout=PIPE, stderr=PIPE)
-        stdout, stderr = process.communicate()
-        print(stdout.decode())
-        print(stderr.decode())
-
-        self.label_message.setText("Pre-processing finished!")
+        try:
+            # Call the extract_mfcc function from the MFCC_extraction module
+            MFCC_extraction.main(self.dataset_path, self.output_path, self.filename)
+            self.label_message.setText("Pre-processing finished!")
+        except Exception as e:
+            print(f"Error: {e}")
+            self.label_message.setText("Error during pre-processing!")
 
     def back_to_hub(self):
         self.close()  # Close the preprocess MFCC window
@@ -254,14 +251,13 @@ class TrainModelWindow(QMainWindow):
             print("Please fill in all fields.")
             return
 
-        # Call train_model.py script with the provided arguments
-        process = Popen(["python3", "src/train_model.py", self.mfcc_path, self.model_type, self.output_directory, str(self.initial_lr_value)], stdout=PIPE, stderr=PIPE)
-        stdout, stderr = process.communicate()
-        print(stdout.decode())
-        print(stderr.decode())
-
-        # Show message box indicating training finished
-        QMessageBox.information(self, "Training Finished", "Training finished!")
+        try:
+            # Call the extract_mfcc function from the MFCC_extraction module
+            train_model.main(self.mfcc_path, self.model_type, self.output_directory, str(self.initial_lr_value))
+            self.label_message.setText("Training Finished!")
+        except Exception as e:
+            print(f"Error: {e}")
+            self.label_message.setText("Error during training!")
 
     def back_to_hub(self):
         self.close()  # Close the train model window
