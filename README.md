@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/genrediscern/img/gd_logo.png)" width="350" title="logo">
+  <img src="genrediscern/img/gd_logo.png)" width="350" title="logo">
 </p>
 
 # GenreDiscern
