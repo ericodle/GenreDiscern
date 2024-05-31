@@ -7,7 +7,7 @@ import os
 from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QPushButton, QFileDialog, QLineEdit, QInputDialog
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
-from genrediscern import MFCC_extraction, train_model
+import MFCC_extraction, train_model
 
 ########################################################################
 # WINDOW SYSTEM
