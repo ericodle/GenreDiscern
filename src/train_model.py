@@ -390,7 +390,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             for (x_batch, y_batch) in train_dataloader:
                 model.train()
                 x_batch = x_batch.unsqueeze(1)
-                x_batch, y_batch = [t.cuda() for t in (x_batch, y_batch)]
+                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
                 y_batch = y_batch.to(torch.int64)        
                 opt.zero_grad()
                 out = model(x_batch)
@@ -410,7 +410,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             running_val_loss = 0
             for x_val, y_val in val_dataloader:
                 x_val = x_val.unsqueeze(1)
-                x_val, y_val = [t.cuda() for t in (x_val, y_val)]
+                x_val, y_val = x_val.to(device), y_val.to(device)
                 out = model(x_val)
                 preds = F.log_softmax(out, dim=1).argmax(dim=1)
                 vtotal += y_val.size(0)
@@ -443,7 +443,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 model.train()
                 x_batch = x_batch.unsqueeze(0)
                 x_batch = x_batch.permute(1, 0, 2, 3)
-                x_batch, y_batch = [t.cuda() for t in (x_batch, y_batch)]
+                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
                 y_batch = y_batch.to(torch.int64)
                 opt.zero_grad()
                 out = model(x_batch)
@@ -464,7 +464,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             running_val_loss = 0
             for x_val, y_val in val_dataloader:
                 x_val = x_val.unsqueeze(1)
-                x_val, y_val = [t.cuda() for t in (x_val, y_val)]
+                x_val, y_val = x_val.to(device), y_val.to(device)
                 out = model(x_val)
                 preds = F.log_softmax(out, dim=1).argmax(dim=1)
                 vtotal += y_val.size(0)
@@ -493,7 +493,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             running_train_loss = 0
             for (x_batch, y_batch) in train_dataloader:
                 model.train()
-                x_batch, y_batch = [t.cuda() for t in (x_batch, y_batch)]
+                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
                 y_batch = y_batch.to(torch.int64)
                 opt.zero_grad()
                 out = model(x_batch)
@@ -512,7 +512,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             vcorrect, vtotal = 0, 0
             running_val_loss = 0
             for x_val, y_val in val_dataloader:
-                x_val, y_val = [t.cuda() for t in (x_val, y_val)]
+                x_val, y_val = x_val.to(device), y_val.to(device)
                 out = model(x_val)
                 preds = F.log_softmax(out, dim=1).argmax(dim=1)
                 vtotal += y_val.size(0)
@@ -541,7 +541,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             running_train_loss = 0
             for (x_batch, y_batch) in train_dataloader:
                 model.train()
-                x_batch, y_batch = [t.cuda() for t in (x_batch, y_batch)]
+                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
                 y_batch = y_batch.to(torch.int64)
                 opt.zero_grad()
                 out = model(x_batch)
@@ -560,7 +560,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             vcorrect, vtotal = 0, 0
             running_val_loss = 0
             for x_val, y_val in val_dataloader:
-                x_val, y_val = [t.cuda() for t in (x_val, y_val)]
+                x_val, y_val = x_val.to(device), y_val.to(device)
                 out = model(x_val)
                 preds = F.log_softmax(out, dim=1).argmax(dim=1)
                 vtotal += y_val.size(0)
@@ -589,7 +589,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             running_train_loss = 0
             for (x_batch, y_batch) in train_dataloader:
                 model.train()
-                x_batch, y_batch = [t.cuda() for t in (x_batch, y_batch)]
+                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
                 y_batch = y_batch.to(torch.int64)
                 opt.zero_grad()
                 out = model(x_batch)
@@ -608,7 +608,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             vcorrect, vtotal = 0, 0
             running_val_loss = 0
             for x_val, y_val in val_dataloader:
-                x_val, y_val = [t.cuda() for t in (x_val, y_val)]
+                x_val, y_val = x_val.to(device), y_val.to(device)
                 out = model(x_val)
                 preds = F.log_softmax(out, dim=1).argmax(dim=1)
                 vtotal += y_val.size(0)
@@ -637,7 +637,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             running_train_loss = 0
             for (x_batch, y_batch) in train_dataloader:
                 model.train()
-                x_batch, y_batch = [t.cuda() for t in (x_batch, y_batch)]
+                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
                 y_batch = y_batch.to(torch.int64)
                 opt.zero_grad()
                 out = model(x_batch)
@@ -656,7 +656,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             vcorrect, vtotal = 0, 0
             running_val_loss = 0
             for x_val, y_val in val_dataloader:
-                x_val, y_val = [t.cuda() for t in (x_val, y_val)]
+                x_val, y_val = x_val.to(device), y_val.to(device)
                 out = model(x_val)
                 preds = F.log_softmax(out, dim=1).argmax(dim=1)
                 vtotal += y_val.size(0)
@@ -685,7 +685,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             running_train_loss = 0
             for (x_batch, y_batch) in train_dataloader:
                 model.train()
-                x_batch, y_batch = [t.cuda() for t in (x_batch, y_batch)]
+                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
                 y_batch = y_batch.to(torch.int64)
                 opt.zero_grad()
                 out = model(x_batch)
@@ -704,7 +704,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             vcorrect, vtotal = 0, 0
             running_val_loss = 0
             for x_val, y_val in val_dataloader:
-                x_val, y_val = [t.cuda() for t in (x_val, y_val)]
+                x_val, y_val = x_val.to(device), y_val.to(device)
                 out = model(x_val)
                 preds = F.log_softmax(out, dim=1).argmax(dim=1)
                 vtotal += y_val.size(0)
@@ -733,7 +733,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             running_train_loss = 0
             for (x_batch, y_batch) in train_dataloader:
                 model.train()
-                x_batch, y_batch = [t.cuda() for t in (x_batch, y_batch)]
+                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
                 y_batch = y_batch.to(torch.int64)
                 opt.zero_grad()
                 out = model(x_batch)
@@ -752,7 +752,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             vcorrect, vtotal = 0, 0
             running_val_loss = 0
             for x_val, y_val in val_dataloader:
-                x_val, y_val = [t.cuda() for t in (x_val, y_val)]
+                x_val, y_val = x_val.to(device), y_val.to(device)
                 out = model(x_val)
                 preds = F.log_softmax(out, dim=1).argmax(dim=1)
                 vtotal += y_val.size(0)
