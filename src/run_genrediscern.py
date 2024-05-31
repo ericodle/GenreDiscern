@@ -19,6 +19,9 @@ import MFCC_extraction, train_model
 # Get the directory path of the current script
 base_dir = os.path.dirname(os.path.abspath(__file__))
 
+# Get the directory that contains base_dir
+containing_dir = os.path.dirname(base_dir)
+
 ################################################################################################################################
 ################################################################################################################################
 
@@ -42,7 +45,7 @@ class WelcomeWindow(QMainWindow):
         self.label_image.setGeometry(150, 130, 300, 200)  # Adjust position and size as needed
 
         # Construct the image path based on base_dir
-        image_path = os.path.join(base_dir, 'img', 'gd_logo.png')
+        image_path = os.path.join(containing_dir, 'img', 'gd_logo.png')
 
         # Load the image into QPixmap
         pixmap = QPixmap(image_path).scaled(300, 300)  # Scale the image to fit the label
