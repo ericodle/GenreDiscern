@@ -189,7 +189,7 @@ class TrainModelWindow(QMainWindow):
         self.setGeometry(100, 100, 600, 400)
 
         self.label_train_model = QLabel("Train Model", self)
-        self.label_train_model.setGeometry(200, 50, 200, 30)
+        self.label_train_model.setGeometry(100, 50, 200, 30)
 
         self.button_select_mfcc_path = QPushButton("Select MFCC path", self)
         self.button_select_mfcc_path.setGeometry(200, 50, 200, 30)
