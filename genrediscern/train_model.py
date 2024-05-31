@@ -17,7 +17,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset 
-from genrediscern import models
+import models
 
 ########################################################################
 # INTENDED FOR USE WITH CUDA
