@@ -3,7 +3,7 @@
 </p>
 
 # GenreDiscern
-Music genre discriminator via artifical neural network modeling
+Music genre discriminator via artificial neural network modeling
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
