@@ -62,7 +62,7 @@ This is the easiest way to install GenreDiscern.
 #### Step 3: Install GenreDiscern using pip
 
   ```sh
-  pip3 install genrediscern
+pip3 install -i https://test.pypi.org/simple/ genrediscern
   ```
 
 ### Step 4: Run GenreDiscern
