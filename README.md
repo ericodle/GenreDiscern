@@ -43,26 +43,47 @@ Your system should now have the required SSL certificates
 
 Here is an easy way to use our GitHub repository.
 
-### Install with pip
+### Install the slow way
 
-This is the easiest way to install GenreDiscern.
 
-#### Step 1: Set up a virtual environment.
+#### Step 1: Download the GitHub repository and change directory to the GenreDiscern project.
+
+On Mac and Linux:
+
+  ```sh
+  cd path/to/GenreDiscern/on/your/computer
+  ```
+On Windows:
+
+  ```sh
+  cd path\to\GenreDiscern\on\your\computer
+  ```
+
+#### Step 2: Set up a virtual environment.
 
   ```sh
   python3 -m venv env
   ```
 
-#### Step 2: Activate the virtual environment.
+#### Step 3: Activate the virtual environment.
+
+On Mac and Linux:
 
   ```sh
   source env/bin/activate
   ```
 
-#### Step 3: Install GenreDiscern using pip
+On Windows
 
   ```sh
-pip3 install -i https://test.pypi.org/simple/ genrediscern
+  env\Scripts\activate
+  ```
+
+#### Step 4: Install dependencies using pip
+
+  ```sh
+pip3 install -r base_requirements.txt
+pip3 install -r nvidia_requirements.txt
   ```
 
 ### Step 4: Run GenreDiscern
@@ -70,9 +91,15 @@ pip3 install -i https://test.pypi.org/simple/ genrediscern
 This project has a GUI for easy use.
 Activate the GUI by running the following terminal command:
 
+Mac and Linux:
+
   ```sh
-genrediscern
+python3 ./src/run_genrediscern.py
   ```
+
+On Windows:
+
+...not sure.
 
 #### Pre-process sorted music dataset
 
