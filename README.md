@@ -12,51 +12,24 @@ Music genre discriminator via artificial neural network modeling
 
 ## Prerequisite
 
-Install [Python3](https://www.python.org/downloads/) on your computer.
-
-Enter this into your computer's command line interface (terminal, control panel, etc.) to check the version:
-
-  ```sh
-  python --version
-  ```
-
-If the first number is not a 3, update to Python3.
+- Python3
+- VSCode
+- an Nvidia GPU
+- Preferably a Linux system
 
 ## Setup
 
-### For Mac users
-Newer versions of Python lack certain SSL (secure sockets layer) certificates on MacOS.
-To correct this, perform the following steps in your working environment:
-#### Step 1: Install certifi
+#### Step 1: Clone the repo and move into the working directory
+
   ```sh
-  python3 -m pip3 install --upgrade pip3 
-  pip3 install --upgrade certifi
+  git clone https://github.com/ericodle/GenreDiscern
+  cd GenreDiscern
   ```
-#### Step 2: Configure system SSL certificates
-Find the path to your Python distribution's Certificates.command, then enter the following command.
-Our system used Python 3.12, therefore the command looked like this:
+
+Bonus tip: open in VSCode.
 
   ```sh
-  sudo /Applications/Python\ 3.12/Install\ Certificates.command
-  ```
-Your system should now have the required SSL certificates
-
-Here is an easy way to use our GitHub repository.
-
-### Install the slow way
-
-
-#### Step 1: Download the GitHub repository and change directory to the GenreDiscern project.
-
-On Mac and Linux:
-
-  ```sh
-  cd path/to/GenreDiscern/on/your/computer
-  ```
-On Windows:
-
-  ```sh
-  cd path\to\GenreDiscern\on\your\computer
+  code .
   ```
 
 #### Step 2: Set up a virtual environment.
@@ -67,39 +40,21 @@ On Windows:
 
 #### Step 3: Activate the virtual environment.
 
-On Mac and Linux:
-
   ```sh
   source env/bin/activate
-  ```
-
-On Windows
-
-  ```sh
-  env\Scripts\activate
   ```
 
 #### Step 4: Install dependencies using pip
 
   ```sh
-pip3 install -r base_requirements.txt
-pip3 install -r nvidia_requirements.txt
-  ```
+pip3 install -r requirements.txt
+```
 
 ### Step 4: Run GenreDiscern
-
-This project has a GUI for easy use.
-Activate the GUI by running the following terminal command:
-
-Mac and Linux:
 
   ```sh
 python3 ./src/run_genrediscern.py
   ```
-
-On Windows:
-
-...not sure.
 
 #### Pre-process sorted music dataset
 
