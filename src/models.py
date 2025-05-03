@@ -117,16 +117,6 @@ class LSTM_model(nn.Module):
         h0 = torch.zeros(self.layer_dim, x.size(0), self.hidden_dim)
         c0 = torch.zeros(self.layer_dim, x.size(0), self.hidden_dim)
         return [t.cuda() for t in (h0, c0)]
-      
-      
-
-################################################
-#       　        xLSTM           　 　   #
-################################################
-
-## TODO: Implement xLSTM model
-
-
 
 ################################################
 #       　   Gated Recurrent Unit      　 　   #

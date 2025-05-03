@@ -233,7 +233,7 @@ class TrainModelWindow(QMainWindow):
             print("Selected JSON file:", self.mfcc_path)
 
     def select_model_type(self):
-        model_type, ok = QInputDialog.getItem(self, "Select Model Type", "Model Types", ["FC", "CNN", "LSTM", "GRU", "Tr_FC", "Tr_CNN", "Tr_LSTM", "Tr_GRU"], 0, False)
+        model_type, ok = QInputDialog.getItem(self, "Select Model Type", "Model Types", ["FC", "CNN", "LSTM", "xLSTM", "GRU", "Tr_FC", "Tr_CNN", "Tr_LSTM", "Tr_GRU"], 0, False)
         if ok:
             self.model_type = model_type
             print("Selected model type:", self.model_type)
