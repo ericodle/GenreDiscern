@@ -17,7 +17,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset 
-import models, xlstm_model
+import models
 
 ########################################################################
 # INTENDED FOR USE WITH CUDA
@@ -361,7 +361,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     elif model_type == 'LSTM':
         model = models.LSTM_model(input_dim=13, hidden_dim=256, layer_dim=2, output_dim=10, dropout_prob=0.2)
     elif model_type == 'xLSTM':
-        model = xlstm_model.xLSTM_model(input_dim=13, hidden_dim=256, layer_dim=2, output_dim=10, dropout_prob=0.2)
+        model = models.xLSTM(input_dim=13, head_num=8, head_dim=32, layer_dim=2, output_dim=10, dropout_prob=0.2)
     elif model_type == 'GRU':
         model = models.GRU_model(input_dim=13, hidden_dim=256, layer_dim=2, output_dim=10, dropout_prob=0.2)
     elif model_type == "Tr_FC":
