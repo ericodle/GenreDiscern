@@ -42,7 +42,7 @@ class sLSTMBlock(nn.Module):
         self.hidden_size = hidden_size
         self.num_heads = num_heads
 
-        self.layer_norm = nn.LayerNorm(13)  # 13
+        self.layer_norm = nn.LayerNorm(input_size)  # Use input_size dynamically
 
         self.causal_conv = CausalConv1D(1, 1, 4)
 
@@ -55,7 +55,7 @@ class sLSTMBlock(nn.Module):
         self.Rz = BlockDiagonal(hidden_size, hidden_size, num_heads)
         self.Ri = BlockDiagonal(hidden_size, hidden_size, num_heads)
         self.Rf = BlockDiagonal(hidden_size, hidden_size, num_heads)
-        self.Ro = BlockDiagonal(hidden_size, hidden_size, num_heads)
+        self.RO = BlockDiagonal(hidden_size, hidden_size, num_heads)
 
         self.group_norm = nn.GroupNorm(num_heads, hidden_size)
 
@@ -66,31 +66,65 @@ class sLSTMBlock(nn.Module):
 
     def forward(self, x, prev_state):
         h_prev, c_prev, n_prev, m_prev = prev_state
+        print(f"sLSTMBlock forward: x.shape={x.shape}")
+        print(f"Previous state shapes: h_prev={h_prev.shape}, c_prev={c_prev.shape}, n_prev={n_prev.shape}, m_prev={m_prev.shape}")
+
         x_norm = self.layer_norm(x)
+        print(f"After LayerNorm: x_norm.shape={x_norm.shape}")
+
         x_conv = F.silu(self.causal_conv(x_norm.unsqueeze(1)).squeeze(1))
+        print(f"After causal_conv and silu: x_conv.shape={x_conv.shape}")
 
         z = torch.tanh(self.Wz(x) + self.Rz(h_prev))
-        o = torch.sigmoid(self.Wo(x) + self.Ro(h_prev))
+        print(f"z shape (tanh): {z.shape}")
+
+        o = torch.sigmoid(self.Wo(x) + self.RO(h_prev))
+        print(f"o shape (sigmoid): {o.shape}")
+
         i_tilde = self.Wi(x_conv) + self.Ri(h_prev)
+        print(f"i_tilde shape: {i_tilde.shape}")
+
         f_tilde = self.Wf(x_conv) + self.Rf(h_prev)
+        print(f"f_tilde shape: {f_tilde.shape}")
 
         m_t = torch.max(f_tilde + m_prev, i_tilde)
+        print(f"m_t shape: {m_t.shape}")
+
         i = torch.exp(i_tilde - m_t)
         f = torch.exp(f_tilde + m_prev - m_t)
+        print(f"i shape (after exp): {i.shape}")
+        print(f"f shape (after exp): {f.shape}")
 
         c_t = f * c_prev + i * z
         n_t = f * n_prev + i
+        print(f"c_t shape: {c_t.shape}")
+        print(f"n_t shape: {n_t.shape}")
+
         h_t = o * c_t / n_t
+        print(f"h_t shape: {h_t.shape}")
 
         out = self.group_norm(h_t)
+        print(f"After group_norm: out.shape={out.shape}")
+
         out_left = self.up_proj_left(out)
         out_right = self.up_proj_right(out)
+        print(f"out_left shape (up_proj_left): {out_left.shape}")
+        print(f"out_right shape (up_proj_right): {out_right.shape}")
+
         out_gated = F.gelu(out_right)
+        print(f"out_gated shape (gelu): {out_gated.shape}")
+
         out = out_left * out_gated
+        print(f"After element-wise gating: out.shape={out.shape}")
+
         out = self.down_proj(out)
+        print(f"After down_proj: out.shape={out.shape}")
+
         final_output = out + x
+        print(f"final_output shape (after residual add): {final_output.shape}")
 
         return final_output, (h_t, c_t, n_t, m_t)
+
 
 
 class sLSTM(nn.Module):
@@ -143,7 +177,7 @@ class mLSTMBlock(nn.Module):
         self.num_heads = num_heads
         self.head_size = hidden_size // num_heads
 
-        self.layer_norm = nn.LayerNorm(13)  # 13 mfccs
+        self.layer_norm = nn.LayerNorm(input_size)  
 
         self.up_proj_left = nn.Linear(input_size, int(input_size * proj_factor))
         self.up_proj_right = nn.Linear(input_size, hidden_size)
@@ -240,18 +274,44 @@ class xLSTMBlock(nn.Module):
     def __init__(self, input_size, hidden_size, num_heads, proj_factor=2):
         super(xLSTMBlock, self).__init__()
         self.hidden_size = hidden_size  
-        # Mix features from sLSTM and mLSTM here, or add new ideas.
         self.slstm = sLSTMBlock(input_size, hidden_size, num_heads, proj_factor=proj_factor)
         self.mlstm = mLSTMBlock(input_size, hidden_size, num_heads, proj_factor=proj_factor)
 
     def forward(self, x, state):
-        # Forward through both blocks, or conditionally.
-        x_s, state_s = self.slstm(x, state)
-        x_m, state_m = self.mlstm(x, state)
-        # Example: average the outputs and states
-        x_out = (x_s + x_m) / 2
-        state_out = tuple((s1 + s2) / 2 for s1, s2 in zip(state_s, state_m))
+        print(f"\n--- xLSTMBlock ---")
+        print(f"Input x shape: {x.shape}")
+        print(f"State (tuple of 4 tensors): {[s.shape for s in state]}")
+        
+        try:
+            x_s, state_s = self.slstm(x, state)
+            print(f"Output from sLSTMBlock: x_s shape = {x_s.shape}, state_s shapes = {[s.shape for s in state_s]}")
+        except Exception as e:
+            print(f"ERROR in sLSTMBlock: {e}")
+            raise
+
+        try:
+            x_m, state_m = self.mlstm(x, state)
+            print(f"Output from mLSTMBlock: x_m shape = {x_m.shape}, state_m shapes = {[s.shape for s in state_m]}")
+        except Exception as e:
+            print(f"ERROR in mLSTMBlock: {e}")
+            raise
+
+        try:
+            x_out = (x_s + x_m) / 2
+            print(f"Averaged output x_out shape: {x_out.shape}")
+        except Exception as e:
+            print(f"ERROR when averaging x_s and x_m: {e}")
+            raise
+
+        try:
+            state_out = tuple((s1 + s2) / 2 for s1, s2 in zip(state_s, state_m))
+            print(f"Averaged state_out shapes: {[s.shape for s in state_out]}")
+        except Exception as e:
+            print(f"ERROR when averaging states: {e}")
+            raise
+
         return x_out, state_out
+
 
 class xLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_heads, num_layers=1, batch_first=False, proj_factor=2):
@@ -268,26 +328,57 @@ class xLSTM(nn.Module):
         ])
 
     def forward(self, x, state=None):
+        print(f"\n=== xLSTM forward ===")
+        print(f"Input x shape: {x.shape} | batch_first={self.batch_first}")
+
         if self.batch_first:
             x = x.transpose(0, 1)
+            print(f"Transposed x for time-major: {x.shape}")
+
         seq_len, batch_size, _ = x.shape
+        print(f"Sequence length: {seq_len}, Batch size: {batch_size}")
 
         if state is None:
             state = torch.zeros(self.num_layers, 4, batch_size, self.hidden_size, device=x.device)
+            print(f"Initialized state: {state.shape}")
         else:
+            print(f"Using provided state: {[s.shape for s in state]}")
             state = torch.stack(state).transpose(0, 1)
+            print(f"Stacked + transposed state: {state.shape}")
 
         outputs = []
+
         for t in range(seq_len):
             x_t = x[t]
+            print(f"\nTime step {t}, x_t shape: {x_t.shape}")
+
             for layer in range(self.num_layers):
-                x_t, new_state = self.layers[layer](x_t, tuple(state[layer]))
+                print(f"  Layer {layer}")
+                print(f"    Input to layer: {x_t.shape}")
+                layer_state = tuple(state[layer])
+                print(f"    State shape (each part): {[s.shape for s in layer_state]}")
+
+                try:
+                    x_t, new_state = self.layers[layer](x_t, layer_state)
+                    print(f"    Output from layer: {x_t.shape}")
+                except Exception as e:
+                    print(f"    ERROR in layer {layer} at timestep {t}: {e}")
+                    raise
+
                 state[layer] = torch.stack(new_state)
+                print(f"    Updated state[layer] shape: {state[layer].shape}")
+
             outputs.append(x_t)
+            print(f"  Appended output shape: {x_t.shape}")
 
         output = torch.stack(outputs)
+        print(f"\nFinal stacked output shape (time-first): {output.shape}")
+
         if self.batch_first:
             output = output.transpose(0, 1)
+            print(f"Transposed output to batch-first: {output.shape}")
 
         state = tuple(state.transpose(0, 1))
+        print(f"Final state (tuple of layers), each shape: {[s.shape for s in state]}")
+
         return output, state
