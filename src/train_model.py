@@ -573,9 +573,9 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 print(f"    pred shape: {pred.shape}")
 
                 ttotal += y_batch.size(0)
-                tcorrect += torch.sum(pred == y_batch).item()
-
-                print(f"    Batch loss: {loss.item():.4f} | Batch acc: {100 * torch.sum(pred == y_batch).item() / y_batch.size(0):.2f}%")
+                pred_labels = torch.argmax(pred, dim=1)
+                accuracy = 100 * (pred_labels == y_batch).sum().item() / y_batch.size(0)
+                print(f"    Batch loss: {loss.item():.4f} | Batch acc: {accuracy:.2f}%")
 
             train_acc_epoch = 100 * tcorrect / ttotal
             train_loss_epoch = running_train_loss / len(train_dataloader)
