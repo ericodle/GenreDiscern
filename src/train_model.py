@@ -363,9 +363,9 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     elif model_type == 'xLSTM':
         model = xlstm.xLSTM(
     input_size=13,       
-    hidden_size=32,      
+    hidden_size=8,      
     num_heads=1,          
-    num_layers=4,         # number of stacked xLSTM layers
+    num_layers=8,         # number of stacked xLSTM layers
     batch_first=True,     
 )
     elif model_type == 'GRU':
