@@ -561,10 +561,9 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 print(f"    y_batch shape: {y_batch.shape}")
 
                 opt.zero_grad()
-                out, state = model(x_batch)
-                print(f"    model output shape: {out.shape}")
-
-                loss = criterion(out, y_batch)
+                out, state = model(x_batch)  # out shape: [32, 1292, 13]
+                out_last = out[:, -1, :]     # take last time step output: shape [32, 13]
+                loss = criterion(out_last, y_batch)  # y_batch shape: [32]
                 running_train_loss += loss.item()
                 loss.backward()
                 opt.step()
