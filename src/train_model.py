@@ -362,12 +362,11 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
         model = models.LSTM_model(input_dim=13, hidden_dim=256, layer_dim=2, output_dim=10, dropout_prob=0.2)
     elif model_type == 'xLSTM':
         model = xlstm.xLSTM(
-    input_size=13,       # input feature size
-    hidden_size=1,      # size of hidden state in the LSTM
-    num_heads=1,          # number of attention heads
-    num_layers=1,         # number of stacked xLSTM layers
-    batch_first=True,     # input/output format: [batch, seq, feature]
-    proj_factor=1         # projection size factor
+    input_size=13,       
+    hidden_size=32,      
+    num_heads=1,          
+    num_layers=4,         # number of stacked xLSTM layers
+    batch_first=True,     
 )
     elif model_type == 'GRU':
         model = models.GRU_model(input_dim=13, hidden_dim=256, layer_dim=2, output_dim=10, dropout_prob=0.2)
