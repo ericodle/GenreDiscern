@@ -394,7 +394,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     # Training hyperparameters
     initial_lr = float(initial_lr)
-    n_epochs = 2
+    n_epochs = 10
     iterations_per_epoch = len(train_dataloader)
     best_acc = 0
     patience, trials = 20, 0
