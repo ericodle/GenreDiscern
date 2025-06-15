@@ -127,6 +127,53 @@ def test_recurrent_model(model, test_dataloader, device='cpu'):
 
     return ground_truth, predicted_genres, predicted_probs, accuracy
 
+def test_xlstm_model(model, test_dataloader, device='cpu'):
+    """
+    Evaluate an xLSTM model using a test dataloader.
+    Handles state initialization specific to the xLSTM class.
+    """
+    model.eval()
+    model = model.to(device)
+
+    true = []
+    preds = []
+    probs = []
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+        for X_batch, y_batch in test_dataloader:
+            X_batch = X_batch.to(device)
+            y_batch = y_batch.to(device)
+            batch_size = X_batch.size(0)
+
+            # Initialize hidden state for xLSTM
+            initial_state = [
+                tuple(torch.zeros(batch_size, model.xlstm.hidden_size, device=device) for _ in range(4))
+                for _ in range(model.xlstm.num_layers)
+            ]
+
+            # Forward pass
+            outputs = model(X_batch)
+
+            y_probs = torch.softmax(outputs, dim=-1)
+            y_pred = torch.argmax(outputs, dim=-1)
+
+            correct += (y_pred == y_batch).sum().item()
+            total += batch_size
+
+            true.append(y_batch.cpu())
+            preds.append(y_pred.cpu())
+            probs.append(y_probs.cpu())
+
+    ground_truth = torch.cat(true)
+    predicted_genres = torch.cat(preds)
+    predicted_probs = torch.cat(probs)
+    accuracy = correct / total
+
+    return ground_truth, predicted_genres, predicted_probs, accuracy
+
+
 def test_transformer_model(model, test_dataloader, device='cpu'):
     '''
     This function evaluates a transformer network using a test dataloader. 
@@ -347,7 +394,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     # Training hyperparameters
     initial_lr = float(initial_lr)
-    n_epochs = 10000
+    n_epochs = 2
     iterations_per_epoch = len(train_dataloader)
     best_acc = 0
     patience, trials = 20, 0
@@ -361,13 +408,14 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     elif model_type == 'LSTM':
         model = models.LSTM_model(input_dim=13, hidden_dim=256, layer_dim=2, output_dim=10, dropout_prob=0.2)
     elif model_type == 'xLSTM':
-        model = xlstm.xLSTM(
-    input_size=13,       
-    hidden_size=8,      
-    num_heads=1,          
-    num_layers=8,        
-    batch_first=True,     
-)
+        model = xlstm.xLSTMClassifier(
+            input_size=13,
+            hidden_size=13,
+            num_heads=1,
+            num_layers=1,
+            num_classes=10,  
+            batch_first=True        
+        )
     elif model_type == 'GRU':
         model = models.GRU_model(input_dim=13, hidden_dim=256, layer_dim=2, output_dim=10, dropout_prob=0.2)
     elif model_type == "Tr_FC":
@@ -560,9 +608,8 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 print(f"    y_batch shape: {y_batch.shape}")
 
                 opt.zero_grad()
-                out, state = model(x_batch)  # out shape: [32, 1292, 13]
-                out_last = out[:, -1, :]     # take last time step output: shape [32, 13]
-                loss = criterion(out_last, y_batch)  # y_batch shape: [32]
+                out = model(x_batch)
+                loss = criterion(out, y_batch) 
                 running_train_loss += loss.item()
                 loss.backward()
                 opt.step()
@@ -572,8 +619,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 print(f"    pred shape: {pred.shape}")
 
                 ttotal += y_batch.size(0)
-                pred_labels = torch.argmax(pred, dim=1)
-                accuracy = 100 * (pred_labels == y_batch).sum().item() / y_batch.size(0)
+                accuracy = 100 * (pred == y_batch).sum().item() / y_batch.size(0)
                 print(f"    Batch loss: {loss.item():.4f} | Batch acc: {accuracy:.2f}%")
 
             train_acc_epoch = 100 * tcorrect / ttotal
@@ -595,16 +641,15 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                     print(f"    x_val shape: {x_val.shape}")
                     print(f"    y_val shape: {y_val.shape}")
 
-                    out, state = model(x_val)
+                    out = model(x_val)
                     print(f"    model output shape: {out.shape}")
 
-                    out_last = out[:, -1, :]  # shape: [batch_size, num_classes]
-                    preds = F.log_softmax(out_last, dim=1).argmax(dim=1)
+                    preds = F.log_softmax(out, dim=1).argmax(dim=1)
                     print(f"    preds shape: {preds.shape}")
 
                     vtotal += y_val.size(0)
                     vcorrect += (preds == y_val).sum().item()
-                    running_val_loss += criterion(out_last, y_val.long()).item()
+                    running_val_loss += criterion(out, y_val.long()).item()
 
                     print(f"    Batch acc: {100 * (preds == y_val).sum().item() / y_val.size(0):.2f}%")
 
@@ -949,25 +994,22 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
         plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
         print("Learning metrics plotted!")
 
-        # Test the model
-        ground_truth, predicted_genres, predicted_probs, accuracy = test_recurrent_model(model, test_dataloader, device=device)
+        # Test the xLSTM model
+        ground_truth, predicted_genres, predicted_probs, accuracy = test_xlstm_model(
+            model, test_dataloader, device=device
+        )
 
-        # Print test accuracy
         print(f'Test accuracy: {accuracy * 100:.2f}%')
 
-        # Plot confusion matrix
         class_names = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
         save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory)
 
-        # Calculate ROC AUC scores
         roc_auc_scores = calculate_roc_auc(ground_truth, predicted_probs)
-
-        # Print ROC AUC scores
         for class_idx, score in enumerate(roc_auc_scores):
             print(f'Class {class_idx} ROC AUC: {score:.4f}')
 
-        # Plot ROC curves
         plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
+
 
     if model_type == "GRU":
         plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)

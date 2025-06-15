@@ -182,3 +182,18 @@ class xLSTM(nn.Module):
         if self.batch_first:
             out = out.transpose(0, 1)
         return out, state
+
+class xLSTMClassifier(nn.Module):
+    def __init__(self, input_size, hidden_size, num_heads, num_layers=1, num_classes=10, batch_first=False, proj_factor=2):
+        super().__init__()
+        self.xlstm = xLSTM(input_size, hidden_size, num_heads, num_layers, batch_first, proj_factor)
+        self.classifier = nn.Linear(hidden_size, num_classes)
+
+    def forward(self, x):
+        # x: (batch, seq_len, input_size) if batch_first
+        out, _ = self.xlstm(x)
+        if self.xlstm.batch_first:
+            last_hidden = out[:, -1, :]  # last time step
+        else:
+            last_hidden = out[-1, :, :]
+        return self.classifier(last_hidden)
