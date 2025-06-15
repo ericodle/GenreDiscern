@@ -1,9 +1,9 @@
-# 1
-set up env
+# 1 set up env
+source env/bin/activate
 
-# 2
+# 2 extract mfccs
 python src/MFCC_extraction.py /home/eo/Documents/genres_original/ ./output/ gtzan_mfcc
 
-# 3
+# 3 train
 python3 src/train_model.py ./output/gtzan_mfcc.json LSTM ./output 0.001
 

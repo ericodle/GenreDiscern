@@ -335,10 +335,10 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     test_dataset = TensorDataset(tensor_X_test, tensor_y_test)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=True)
 
-    test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=True)
 
     train_loss = [] 
     val_loss = []   
@@ -365,7 +365,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     input_size=13,       
     hidden_size=8,      
     num_heads=1,          
-    num_layers=8,         # number of stacked xLSTM layers
+    num_layers=8,        
     batch_first=True,     
 )
     elif model_type == 'GRU':
@@ -598,12 +598,13 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                     out, state = model(x_val)
                     print(f"    model output shape: {out.shape}")
 
-                    preds = F.log_softmax(out, dim=1).argmax(dim=1)
+                    out_last = out[:, -1, :]  # shape: [batch_size, num_classes]
+                    preds = F.log_softmax(out_last, dim=1).argmax(dim=1)
                     print(f"    preds shape: {preds.shape}")
 
                     vtotal += y_val.size(0)
                     vcorrect += (preds == y_val).sum().item()
-                    running_val_loss += criterion(out, y_val.long()).item()
+                    running_val_loss += criterion(out_last, y_val.long()).item()
 
                     print(f"    Batch acc: {100 * (preds == y_val).sum().item() / y_val.size(0):.2f}%")
 
