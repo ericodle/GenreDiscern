@@ -281,7 +281,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     # Training hyperparameters
     initial_lr = float(initial_lr)
-    n_epochs = 10
+    n_epochs = 50
     iterations_per_epoch = len(train_dataloader)
     best_acc = 0
     patience, trials = 20, 0
@@ -305,7 +305,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     opt = torch.optim.RMSprop(model.parameters(), initial_lr)
 
-    sched = CyclicLR(opt, cosine(t_max=iterations_per_epoch * 2, eta_min= initial_lr / 100))
+    sched = CyclicLR(opt, cosine(t_max=iterations_per_epoch * 2, eta_min= initial_lr / 1))
 
     print(f'Training {model_type} model with learning rate of {initial_lr}.')
 
