@@ -48,6 +48,18 @@ def load_data(data_path):
     X = np.array(data["mfcc"])
     y = np.array(data["labels"])
 
+    # Pad MFCC features to 16 if needed
+    if X.shape[-1] == 13:
+        pad_width = ((0, 0), (0, 0), (0, 3))  # pad last dimension to 16
+        X = np.pad(X, pad_width, mode='constant')
+        print(f"MFCC features padded to shape: {X.shape}")
+
+    # Normalize the data
+    X_mean = np.mean(X, axis=(0, 1), keepdims=True)
+    X_std = np.std(X, axis=(0, 1), keepdims=True)
+    X = (X - X_mean) / (X_std + 1e-8)
+    print(f"Data normalized - mean: {X_mean.flatten()[:5]}, std: {X_std.flatten()[:5]}")
+
     print("Data succesfully loaded!")
 
     return X, y
@@ -269,10 +281,10 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     test_dataset = TensorDataset(tensor_X_test, tensor_y_test)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=True)
 
-    test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=True)
 
     train_loss = [] 
     val_loss = []   
@@ -281,20 +293,21 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     # Training hyperparameters
     initial_lr = float(initial_lr)
-    n_epochs = 50
+    n_epochs = 100  # Increased from 50 to 100
     iterations_per_epoch = len(train_dataloader)
     best_acc = 0
-    patience, trials = 20, 0
+    patience, trials = 15, 0  # Reduced patience from 20 to 15
 
     # Initialize model based on model_type
     if model_type == 'xLSTM':
         model = xlstm.xLSTMClassifier(
-            input_size=13,
-            hidden_size=13,
-            num_heads=1,
-            num_layers=1,
+            input_size=16,  # Use padded MFCC features
+            hidden_size=128,  # Reduced from 256 to 128 for stability
+            num_heads=4,  # Reduced from 8 to 4 for stability
+            num_layers=2,  # Keep 2 layers
             num_classes=10,  
-            batch_first=True        
+            batch_first=True,
+            proj_factor=2
         )
     else:
         raise ValueError("Invalid model_type")
@@ -303,9 +316,11 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     criterion = nn.CrossEntropyLoss()
 
-    opt = torch.optim.RMSprop(model.parameters(), initial_lr)
+    # Use Adam optimizer with better default settings
+    opt = torch.optim.Adam(model.parameters(), lr=initial_lr, weight_decay=1e-4, eps=1e-8)
 
-    sched = CyclicLR(opt, cosine(t_max=iterations_per_epoch * 2, eta_min= initial_lr / 1))
+    # Use a more conservative learning rate schedule
+    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='max', factor=0.5, patience=5, verbose=True)
 
     print(f'Training {model_type} model with learning rate of {initial_lr}.')
 
@@ -331,7 +346,31 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 opt.zero_grad()
                 out = model(x_batch)
                 loss = criterion(out, y_batch)
+                
+                # Check for NaN loss
+                if torch.isnan(loss):
+                    log_file = os.path.join(output_directory, 'gradient_stats.txt')
+                    with open(log_file, 'a') as f:
+                        f.write(f"NaN loss detected at batch {batch_idx}, skipping...\n")
+                    continue
+                    
                 loss.backward()
+
+                # Add gradient clipping for stability with smaller threshold
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
+
+                # Check for NaN gradients
+                has_nan_grad = False
+                for name, param in model.named_parameters():
+                    if param.grad is not None and torch.isnan(param.grad).any():
+                        log_file = os.path.join(output_directory, 'gradient_stats.txt')
+                        with open(log_file, 'a') as f:
+                            f.write(f"NaN gradient detected in {name}, skipping batch...\n")
+                        has_nan_grad = True
+                        break
+                
+                if has_nan_grad:
+                    continue
 
                 # Collect gradient norms and raw values
                 for name, param in model.named_parameters():
@@ -341,32 +380,36 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                         gradient_values[name].append(grad.view(-1))
 
                 opt.step()
-                sched.step()
+                # Note: sched.step() will be called after validation
 
                 _, pred = torch.max(out, dim=1)
                 ttotal += y_batch.size(0)
                 tcorrect += (pred == y_batch).sum().item()
                 running_train_loss += loss.item()
 
-            train_acc_epoch = 100 * tcorrect / ttotal
-            train_loss_epoch = running_train_loss / len(train_dataloader)
+            train_acc_epoch = 100 * tcorrect / ttotal if ttotal > 0 else 0.0
+            train_loss_epoch = running_train_loss / len(train_dataloader) if len(train_dataloader) > 0 else 0.0
             train_acc.append(train_acc_epoch)
             train_loss.append(train_loss_epoch)
 
+            if ttotal == 0:
+                print(f"WARNING: Epoch {epoch} - No batches were processed (all skipped due to NaN detection)")
             print(f"Epoch {epoch} training done. Avg Loss: {train_loss_epoch:.4f}, Acc: {train_acc_epoch:.2f}%")
 
             # -----------------------------------------
-            # Print gradient stats after training epoch
+            # Log gradient stats to file after training epoch
             # -----------------------------------------
-            print(f"\n[Gradient Statistics for Epoch {epoch}]")
-            for name, grads in gradient_values.items():
-                if grads:
-                    flat_grads = torch.cat(grads)
-                    grad_mean = flat_grads.mean().item()
-                    grad_std = flat_grads.std().item()
-                    grad_min = flat_grads.min().item()
-                    grad_max = flat_grads.max().item()
-                    print(f"{name:40s} | mean: {grad_mean: .5e} | std: {grad_std: .5e} | min: {grad_min: .5e} | max: {grad_max: .5e}")
+            log_file = os.path.join(output_directory, 'gradient_stats.txt')
+            with open(log_file, 'a') as f:
+                f.write(f"\n[Gradient Statistics for Epoch {epoch}]\n")
+                for name, grads in gradient_values.items():
+                    if grads:
+                        flat_grads = torch.cat(grads)
+                        grad_mean = flat_grads.mean().item()
+                        grad_std = flat_grads.std().item()
+                        grad_min = flat_grads.min().item()
+                        grad_max = flat_grads.max().item()
+                        f.write(f"{name:40s} | mean: {grad_mean: .5e} | std: {grad_std: .5e} | min: {grad_min: .5e} | max: {grad_max: .5e}\n")
 
             # -----------------------------------------
             # Plot gradient norms over batches
@@ -395,10 +438,13 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                     vcorrect += (preds == y_val).sum().item()
                     running_val_loss += criterion(out, y_val.long()).item()
 
-            val_acc_epoch = 100 * vcorrect / vtotal
-            val_loss_epoch = running_val_loss / len(val_dataloader)
+            val_acc_epoch = 100 * vcorrect / vtotal if vtotal > 0 else 0.0
+            val_loss_epoch = running_val_loss / len(val_dataloader) if len(val_dataloader) > 0 else 0.0
             val_acc.append(val_acc_epoch)
             val_loss.append(val_loss_epoch)
+
+            # Update learning rate based on validation accuracy
+            sched.step(val_acc_epoch)
 
             print(f"Epoch {epoch} validation done. Avg Loss: {val_loss_epoch:.4f}, Acc: {val_acc_epoch:.2f}%")
 

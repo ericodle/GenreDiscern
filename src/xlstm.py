@@ -142,21 +142,29 @@ class xLSTMBlock(nn.Module):
     def forward(self, x, state):
         s_out, s_state = self.slstm(x, state)
         m_out, m_state = self.mlstm(x, state)
-        x_out = (s_out + m_out) / 2
+        s_hidden = s_state[0]  # h_t from sLSTM
+        m_hidden = m_state[0]  # h_t from mLSTM
+        h_out = (s_hidden + m_hidden) / 2
         new_state = tuple((s + m) / 2 for s, m in zip(s_state, m_state))
-        return x_out, new_state
+        return h_out, new_state
 
 
 class xLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_heads, num_layers=1, batch_first=False, proj_factor=2):
         super().__init__()
         self.batch_first = batch_first
-        self.layers = nn.ModuleList([
-            xLSTMBlock(input_size, hidden_size, num_heads, proj_factor)
-            for _ in range(num_layers)
-        ])
+        self.input_size = input_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
+        
+        # First layer processes input_size -> hidden_size
+        self.first_layer = xLSTMBlock(input_size, hidden_size, num_heads, proj_factor)
+        
+        # Subsequent layers process hidden_size -> hidden_size
+        self.layers = nn.ModuleList([
+            xLSTMBlock(hidden_size, hidden_size, num_heads, proj_factor)
+            for _ in range(num_layers - 1)
+        ])
 
     def forward(self, x, state=None):
         if self.batch_first:
@@ -165,6 +173,7 @@ class xLSTM(nn.Module):
         seq_len, batch_size, _ = x.shape
 
         if state is None:
+            # Initialize state for all layers
             state = [
                 tuple(torch.zeros(batch_size, self.hidden_size, device=x.device) for _ in range(4))
                 for _ in range(self.num_layers)
@@ -173,9 +182,16 @@ class xLSTM(nn.Module):
         outputs = []
         for t in range(seq_len):
             x_t = x[t]
+            
+            # First layer
+            x_t, new_state = self.first_layer(x_t, state[0])
+            state[0] = new_state
+            
+            # Subsequent layers
             for i, layer in enumerate(self.layers):
-                x_t, new_state = layer(x_t, state[i])
-                state[i] = new_state
+                x_t, new_state = layer(x_t, state[i + 1])
+                state[i + 1] = new_state
+                
             outputs.append(x_t)
 
         out = torch.stack(outputs)
@@ -187,13 +203,28 @@ class xLSTMClassifier(nn.Module):
     def __init__(self, input_size, hidden_size, num_heads, num_layers=1, num_classes=10, batch_first=False, proj_factor=2):
         super().__init__()
         self.xlstm = xLSTM(input_size, hidden_size, num_heads, num_layers, batch_first, proj_factor)
-        self.classifier = nn.Linear(hidden_size, num_classes)
+        
+        # Add a more sophisticated classifier head
+        self.dropout = nn.Dropout(0.3)
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_size // 2, num_classes)
+        )
 
     def forward(self, x):
         # x: (batch, seq_len, input_size) if batch_first
         out, _ = self.xlstm(x)
         if self.xlstm.batch_first:
+            # Use both last hidden state and mean pooling for better representation
             last_hidden = out[:, -1, :]  # last time step
+            mean_hidden = out.mean(dim=1)  # mean pooling
+            combined = (last_hidden + mean_hidden) / 2
         else:
             last_hidden = out[-1, :, :]
-        return self.classifier(last_hidden)
+            mean_hidden = out.mean(dim=0)
+            combined = (last_hidden + mean_hidden) / 2
+        
+        combined = self.dropout(combined)
+        return self.classifier(combined)
