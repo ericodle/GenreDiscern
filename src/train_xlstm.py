@@ -525,9 +525,6 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 # Scale loss and backward pass
                 scaler.scale(loss).backward()
 
-                # Add gradient clipping for stability with smaller threshold
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
-
                 # Check for NaN gradients
                 has_nan_grad = False
                 for name, param in model.named_parameters():
