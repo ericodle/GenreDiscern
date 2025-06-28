@@ -18,6 +18,10 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset 
 import models, xlstm
+import time
+
+# Enable mixed precision training for faster training
+from torch.amp import autocast, GradScaler
 
 ########################################################################
 # INTENDED FOR USE WITH CUDA
@@ -25,7 +29,7 @@ import models, xlstm
 
 # Ensure that all operations are deterministic on GPU (if used) for reproducibility
 torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.benchmark = True  # Enable cuDNN auto-tuner for faster convolutions
 
 # Fetching the device that will be used throughout this notebook
 device = torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda:0")
@@ -247,6 +251,162 @@ def plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_direc
     plt.savefig(os.path.join(output_directory, "learning_metrics.png"), bbox_inches='tight')  # Use bbox_inches='tight' to prevent cutting off
     plt.close()
 
+def plot_comprehensive_training_metrics(train_loss, val_loss, train_acc, val_acc, learning_rates, output_directory):
+    '''
+    Creates comprehensive training visualizations to help debug training efficacy.
+    '''
+    # Create training_imgs subdirectory
+    training_imgs_dir = os.path.join(output_directory, 'training_imgs')
+    os.makedirs(training_imgs_dir, exist_ok=True)
+    
+    epochs = range(1, len(train_loss) + 1)
+    
+    # 1. Loss and Accuracy Over Time
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
+    
+    # Training/Validation Loss
+    ax1.plot(epochs, train_loss, 'b-', label='Training Loss', linewidth=2)
+    ax1.plot(epochs, val_loss, 'r-', label='Validation Loss', linewidth=2)
+    ax1.set_title('Loss Over Time', fontsize=14, fontweight='bold')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Loss')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # Training/Validation Accuracy
+    ax2.plot(epochs, train_acc, 'b-', label='Training Accuracy', linewidth=2)
+    ax2.plot(epochs, val_acc, 'r-', label='Validation Accuracy', linewidth=2)
+    ax2.set_title('Accuracy Over Time', fontsize=14, fontweight='bold')
+    ax2.set_xlabel('Epoch')
+    ax2.set_ylabel('Accuracy (%)')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    # Learning Rate Over Time
+    if learning_rates:
+        ax3.plot(epochs, learning_rates, 'g-', linewidth=2, marker='o', markersize=4)
+        ax3.set_title('Learning Rate Over Time', fontsize=14, fontweight='bold')
+        ax3.set_xlabel('Epoch')
+        ax3.set_ylabel('Learning Rate')
+        ax3.set_yscale('log')
+        ax3.grid(True, alpha=0.3)
+    
+    # Loss Ratio (Training/Validation) - helps detect overfitting
+    if len(val_loss) > 0 and all(v != 0 for v in val_loss):
+        loss_ratio = [t/v if v != 0 else 0 for t, v in zip(train_loss, val_loss)]
+        ax4.plot(epochs, loss_ratio, 'purple', linewidth=2)
+        ax4.axhline(y=1, color='r', linestyle='--', alpha=0.7, label='Equal Loss')
+        ax4.set_title('Training/Validation Loss Ratio', fontsize=14, fontweight='bold')
+        ax4.set_xlabel('Epoch')
+        ax4.set_ylabel('Loss Ratio')
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(training_imgs_dir, 'training_overview.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # 2. Learning Rate Analysis
+    if len(train_loss) > 1:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+        
+        # Loss vs Learning Rate
+        if learning_rates:
+            ax1.scatter(learning_rates, train_loss, alpha=0.6, s=50)
+            ax1.set_xscale('log')
+            ax1.set_title('Loss vs Learning Rate', fontsize=14, fontweight='bold')
+            ax1.set_xlabel('Learning Rate')
+            ax1.set_ylabel('Training Loss')
+            ax1.grid(True, alpha=0.3)
+        
+        # Loss Curvature Analysis
+        if len(train_loss) > 2:
+            # Calculate second derivative (curvature)
+            loss_diff = np.diff(train_loss)
+            loss_curvature = np.diff(loss_diff)
+            epochs_curv = range(3, len(train_loss) + 1)
+            
+            ax2.plot(epochs_curv, loss_curvature, 'orange', linewidth=2)
+            ax2.axhline(y=0, color='r', linestyle='--', alpha=0.7)
+            ax2.set_title('Loss Curvature (Second Derivative)', fontsize=14, fontweight='bold')
+            ax2.set_xlabel('Epoch')
+            ax2.set_ylabel('Curvature')
+            ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(training_imgs_dir, 'learning_analysis.png'), dpi=300, bbox_inches='tight')
+        plt.close()
+    
+    # 3. Training Stability Analysis
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    
+    # Loss Variance Analysis
+    if len(train_loss) > 5:
+        window_size = min(5, len(train_loss) // 2)
+        loss_variance = []
+        for i in range(window_size, len(train_loss)):
+            window_loss = train_loss[i-window_size:i]
+            loss_variance.append(np.var(window_loss))
+        
+        epochs_var = range(window_size + 1, len(train_loss) + 1)
+        ax1.plot(epochs_var, loss_variance, 'brown', linewidth=2)
+        ax1.set_title(f'Loss Variance (Window={window_size})', fontsize=14, fontweight='bold')
+        ax1.set_xlabel('Epoch')
+        ax1.set_ylabel('Variance')
+        ax1.grid(True, alpha=0.3)
+    
+    # Convergence Analysis
+    if len(train_loss) > 10:
+        # Check if loss is still decreasing significantly
+        recent_loss = train_loss[-10:]
+        loss_trend = np.polyfit(range(len(recent_loss)), recent_loss, 1)[0]
+        
+        ax2.bar(['Loss Trend'], [loss_trend], color='green' if loss_trend < 0 else 'red')
+        ax2.set_title('Recent Loss Trend (Last 10 Epochs)', fontsize=14, fontweight='bold')
+        ax2.set_ylabel('Slope (Negative = Improving)')
+        ax2.axhline(y=0, color='black', linestyle='-', alpha=0.7)
+        ax2.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(training_imgs_dir, 'stability_analysis.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # 4. Save training summary statistics
+    summary_file = os.path.join(training_imgs_dir, 'training_summary.txt')
+    with open(summary_file, 'w') as f:
+        f.write("=== TRAINING SUMMARY ===\n\n")
+        f.write(f"Total Epochs: {len(train_loss)}\n")
+        f.write(f"Final Training Loss: {train_loss[-1]:.6f}\n")
+        f.write(f"Final Validation Loss: {val_loss[-1]:.6f}\n")
+        f.write(f"Final Training Accuracy: {train_acc[-1]:.2f}%\n")
+        f.write(f"Final Validation Accuracy: {val_acc[-1]:.2f}%\n")
+        
+        if learning_rates:
+            f.write(f"Initial Learning Rate: {learning_rates[0]:.2e}\n")
+            f.write(f"Final Learning Rate: {learning_rates[-1]:.2e}\n")
+            f.write(f"Learning Rate Reduction: {learning_rates[0]/learning_rates[-1]:.1f}x\n")
+        
+        if len(train_loss) > 1:
+            f.write(f"\nLoss Improvement: {train_loss[0] - train_loss[-1]:.6f}\n")
+            f.write(f"Accuracy Improvement: {train_acc[-1] - train_acc[0]:.2f}%\n")
+        
+        # Overfitting analysis
+        if len(val_loss) > 0:
+            loss_gap = train_loss[-1] - val_loss[-1]
+            acc_gap = val_acc[-1] - train_acc[-1]
+            f.write(f"\nOverfitting Analysis:\n")
+            f.write(f"Loss Gap (Train-Val): {loss_gap:.6f}\n")
+            f.write(f"Accuracy Gap (Val-Train): {acc_gap:.2f}%\n")
+            
+            if loss_gap < 0 and acc_gap > 5:
+                f.write("⚠️  Potential overfitting detected!\n")
+            elif loss_gap > 0.1 and acc_gap < -5:
+                f.write("⚠️  Potential underfitting detected!\n")
+            else:
+                f.write("✅ Training appears balanced\n")
+    
+    print(f"Comprehensive training visualizations saved to {training_imgs_dir}/")
+
 ########################################################################
 # MAIN
 ########################################################################
@@ -281,33 +441,33 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     test_dataset = TensorDataset(tensor_X_test, tensor_y_test)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
 
-    test_dataloader = DataLoader(test_dataset, batch_size=32, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
 
     train_loss = [] 
     val_loss = []   
     train_acc = []
     val_acc = []
+    learning_rates = []  # Track learning rate changes
 
     # Training hyperparameters
     initial_lr = float(initial_lr)
     n_epochs = 100  # Increased from 50 to 100
     iterations_per_epoch = len(train_dataloader)
     best_acc = 0
-    patience, trials = 15, 0  # Reduced patience from 20 to 15
+    patience, trials = 8, 0  # Reduced patience from 15 to 8 for faster training
 
     # Initialize model based on model_type
     if model_type == 'xLSTM':
-        model = xlstm.xLSTMClassifier(
+        model = xlstm.SimpleXLSTMClassifier(
             input_size=16,  # Use padded MFCC features
-            hidden_size=128,  # Reduced from 256 to 128 for stability
-            num_heads=4,  # Reduced from 8 to 4 for stability
-            num_layers=2,  # Keep 2 layers
+            hidden_size=128,  # Can be larger since model is simpler
+            num_heads=4,  # Can use more heads since model is simpler
+            num_layers=1,  # Keep single layer for simplicity
             num_classes=10,  
-            batch_first=True,
-            proj_factor=2
+            batch_first=True
         )
     else:
         raise ValueError("Invalid model_type")
@@ -315,12 +475,15 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
+    
+    # Initialize gradient scaler for mixed precision training
+    scaler = GradScaler()
 
     # Use Adam optimizer with better default settings
     opt = torch.optim.Adam(model.parameters(), lr=initial_lr, weight_decay=1e-4, eps=1e-8)
 
     # Use a more conservative learning rate schedule
-    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='max', factor=0.5, patience=5, verbose=True)
+    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='max', factor=0.7, patience=10, min_lr=1e-7)
 
     print(f'Training {model_type} model with learning rate of {initial_lr}.')
 
@@ -330,6 +493,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     if model_type == "xLSTM":
 
         for epoch in range(1, n_epochs + 1):
+            epoch_start_time = time.time()
             print(f"\n=== Epoch {epoch} ===")
             tcorrect, ttotal = 0, 0
             running_train_loss = 0
@@ -339,13 +503,17 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             gradient_values = defaultdict(list)
 
             for batch_idx, (x_batch, y_batch) in enumerate(train_dataloader):
+                batch_start_time = time.time()
                 model.train()
                 x_batch, y_batch = x_batch.to(device), y_batch.to(device)
                 y_batch = y_batch.to(torch.int64)
 
                 opt.zero_grad()
-                out = model(x_batch)
-                loss = criterion(out, y_batch)
+                
+                # Use mixed precision training for faster computation
+                with autocast('cuda'):
+                    out = model(x_batch)
+                    loss = criterion(out, y_batch)
                 
                 # Check for NaN loss
                 if torch.isnan(loss):
@@ -354,7 +522,8 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                         f.write(f"NaN loss detected at batch {batch_idx}, skipping...\n")
                     continue
                     
-                loss.backward()
+                # Scale loss and backward pass
+                scaler.scale(loss).backward()
 
                 # Add gradient clipping for stability with smaller threshold
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
@@ -372,20 +541,31 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 if has_nan_grad:
                     continue
 
-                # Collect gradient norms and raw values
-                for name, param in model.named_parameters():
-                    if param.grad is not None:
-                        grad = param.grad.detach().cpu()
-                        gradient_norms[name].append(grad.norm().item())
-                        gradient_values[name].append(grad.view(-1))
+                # Collect gradient norms and raw values (only every 5 batches to save time)
+                if batch_idx % 5 == 0:
+                    for name, param in model.named_parameters():
+                        if param.grad is not None:
+                            grad = param.grad.detach().cpu()
+                            gradient_norms[name].append(grad.norm().item())
+                            gradient_values[name].append(grad.view(-1))
 
-                opt.step()
+                # Optimizer step with scaler
+                scaler.step(opt)
+                scaler.update()
                 # Note: sched.step() will be called after validation
 
                 _, pred = torch.max(out, dim=1)
                 ttotal += y_batch.size(0)
                 tcorrect += (pred == y_batch).sum().item()
                 running_train_loss += loss.item()
+                
+                # Progress indicator every 20 batches (less frequent to reduce overhead)
+                if batch_idx % 20 == 0:
+                    batch_time = time.time() - batch_start_time
+                    print(f"  Batch {batch_idx}/{len(train_dataloader)} - Loss: {loss.item():.4f} - Time: {batch_time:.2f}s")
+
+            epoch_time = time.time() - epoch_start_time
+            print(f"  Epoch {epoch} completed in {epoch_time:.2f} seconds")
 
             train_acc_epoch = 100 * tcorrect / ttotal if ttotal > 0 else 0.0
             train_loss_epoch = running_train_loss / len(train_dataloader) if len(train_dataloader) > 0 else 0.0
@@ -397,33 +577,35 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             print(f"Epoch {epoch} training done. Avg Loss: {train_loss_epoch:.4f}, Acc: {train_acc_epoch:.2f}%")
 
             # -----------------------------------------
-            # Log gradient stats to file after training epoch
+            # Log gradient stats to file after training epoch (only if we have gradients)
             # -----------------------------------------
-            log_file = os.path.join(output_directory, 'gradient_stats.txt')
-            with open(log_file, 'a') as f:
-                f.write(f"\n[Gradient Statistics for Epoch {epoch}]\n")
-                for name, grads in gradient_values.items():
-                    if grads:
-                        flat_grads = torch.cat(grads)
-                        grad_mean = flat_grads.mean().item()
-                        grad_std = flat_grads.std().item()
-                        grad_min = flat_grads.min().item()
-                        grad_max = flat_grads.max().item()
-                        f.write(f"{name:40s} | mean: {grad_mean: .5e} | std: {grad_std: .5e} | min: {grad_min: .5e} | max: {grad_max: .5e}\n")
+            if gradient_values:  # Only log if we collected gradients
+                log_file = os.path.join(output_directory, 'gradient_stats.txt')
+                with open(log_file, 'a') as f:
+                    f.write(f"\n[Gradient Statistics for Epoch {epoch}]\n")
+                    for name, grads in gradient_values.items():
+                        if grads:
+                            flat_grads = torch.cat(grads)
+                            grad_mean = flat_grads.mean().item()
+                            grad_std = flat_grads.std().item()
+                            grad_min = flat_grads.min().item()
+                            grad_max = flat_grads.max().item()
+                            f.write(f"{name:40s} | mean: {grad_mean: .5e} | std: {grad_std: .5e} | min: {grad_min: .5e} | max: {grad_max: .5e}\n")
 
             # -----------------------------------------
-            # Plot gradient norms over batches
+            # Plot gradient norms over batches (only if we have gradients)
             # -----------------------------------------
-            fig, ax = plt.subplots(figsize=(10, 6))
-            for name, norms in gradient_norms.items():
-                ax.plot(norms, label=name)
-            ax.set_title(f"Gradient Norms - Epoch {epoch}")
-            ax.set_xlabel("Batch")
-            ax.set_ylabel("Gradient Norm")
-            ax.legend(fontsize='small', loc='upper right')
-            plt.tight_layout()
-            plt.savefig(os.path.join(output_directory, f"gradient_norms_epoch_{epoch}.png"))
-            plt.close()
+            if gradient_norms:  # Only plot if we collected gradients
+                fig, ax = plt.subplots(figsize=(10, 6))
+                for name, norms in gradient_norms.items():
+                    ax.plot(norms, label=name)
+                ax.set_title(f"Gradient Norms - Epoch {epoch}")
+                ax.set_xlabel("Batch")
+                ax.set_ylabel("Gradient Norm")
+                ax.legend(fontsize='small', loc='upper right')
+                plt.tight_layout()
+                plt.savefig(os.path.join(output_directory, f"gradient_norms_epoch_{epoch}.png"))
+                plt.close()
 
             # Validation loop
             model.eval()
@@ -445,6 +627,10 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
             # Update learning rate based on validation accuracy
             sched.step(val_acc_epoch)
+            
+            # Track current learning rate
+            current_lr = opt.param_groups[0]['lr']
+            learning_rates.append(current_lr)
 
             print(f"Epoch {epoch} validation done. Avg Loss: {val_loss_epoch:.4f}, Acc: {val_acc_epoch:.2f}%")
 
@@ -483,6 +669,8 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             print(f'Class {class_idx} ROC AUC: {score:.4f}')
 
         plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
+
+        plot_comprehensive_training_metrics(train_loss, val_loss, train_acc, val_acc, learning_rates, output_directory)
 
 if __name__ == '__main__':
     # Retrieve command-line arguments
