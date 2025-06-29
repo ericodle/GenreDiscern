@@ -158,6 +158,7 @@ class SimpleXLSTMClassifier(nn.Module):
     def __init__(self, input_size, hidden_size, num_heads=1, num_layers=1, num_classes=10, batch_first=False):
         super().__init__()
         self.xlstm = SimpleXLSTM(input_size, hidden_size, num_heads, num_layers, batch_first)
+        self.dropout = nn.Dropout(0.3)  # Add dropout to reduce overfitting
         self.classifier = nn.Linear(hidden_size, num_classes)
 
     def forward(self, x):
@@ -168,4 +169,6 @@ class SimpleXLSTMClassifier(nn.Module):
         else:
             last_hidden = out[-1, :, :]
         
+        # Apply dropout before classification
+        last_hidden = self.dropout(last_hidden)
         return self.classifier(last_hidden)

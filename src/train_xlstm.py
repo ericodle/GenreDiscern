@@ -457,7 +457,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     n_epochs = 100  # Increased from 50 to 100
     iterations_per_epoch = len(train_dataloader)
     best_acc = 0
-    patience, trials = 8, 0  # Reduced patience from 15 to 8 for faster training
+    patience, trials = 5, 0  # Reduced patience to prevent overfitting
 
     # Initialize model based on model_type
     if model_type == 'xLSTM':
@@ -480,7 +480,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     scaler = GradScaler()
 
     # Use Adam optimizer with better default settings
-    opt = torch.optim.Adam(model.parameters(), lr=initial_lr, weight_decay=1e-4, eps=1e-8)
+    opt = torch.optim.Adam(model.parameters(), lr=initial_lr, weight_decay=1e-3, eps=1e-8)
 
     # Use a more conservative learning rate schedule
     sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='max', factor=0.7, patience=10, min_lr=1e-7)
@@ -641,6 +641,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 trials += 1
                 if trials >= patience:
                     print(f'Early stopping on epoch {epoch} due to no improvement in val accuracy.')
+                    print(f'Final best validation accuracy: {best_acc:.2%}')
                     break
 
 
