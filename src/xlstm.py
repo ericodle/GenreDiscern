@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# NOTE: This xLSTM implementation is hard-coded to use a single head (num_heads=1),
+# which is optimal for small input sizes such as 13 MFCCs. Multi-head is not supported.
+
 class SimpleCausalConv1D(nn.Module):
     """Simplified causal convolution"""
     def __init__(self, in_channels, out_channels, kernel_size=3):
@@ -14,40 +17,32 @@ class SimpleCausalConv1D(nn.Module):
         return x[:, :, :-self.padding]  # Remove padding to maintain causality
 
 class SimpleBlockDiagonal(nn.Module):
-    """Simplified block diagonal linear layer"""
-    def __init__(self, in_features, out_features, num_blocks):
+    """Simplified block diagonal linear layer (single block version)"""
+    def __init__(self, in_features, out_features):
         super().__init__()
-        assert in_features % num_blocks == 0
-        assert out_features % num_blocks == 0
-        block_in = in_features // num_blocks
-        block_out = out_features // num_blocks
-        self.blocks = nn.ModuleList([
-            nn.Linear(block_in, block_out) for _ in range(num_blocks)
-        ])
+        self.block = nn.Linear(in_features, out_features)
 
     def forward(self, x):
-        x_chunks = x.chunk(len(self.blocks), dim=-1)
-        out_chunks = [block(chunk) for block, chunk in zip(self.blocks, x_chunks)]
-        return torch.cat(out_chunks, dim=-1)
+        return self.block(x)
 
 class SimpleSLSTMBlock(nn.Module):
-    """Simplified sLSTM block - core LSTM with causal convolution"""
-    def __init__(self, input_size, hidden_size, num_heads=1):
+    """Simplified sLSTM block - core LSTM with causal convolution (single block)"""
+    def __init__(self, input_size, hidden_size):
         super().__init__()
         self.hidden_size = hidden_size
         self.layer_norm = nn.LayerNorm(input_size)
         self.causal_conv = SimpleCausalConv1D(1, 1, 3)
 
-        # Core LSTM gates
-        self.Wz = SimpleBlockDiagonal(input_size, hidden_size, num_heads)
-        self.Wi = SimpleBlockDiagonal(input_size, hidden_size, num_heads)
-        self.Wf = SimpleBlockDiagonal(input_size, hidden_size, num_heads)
-        self.Wo = SimpleBlockDiagonal(input_size, hidden_size, num_heads)
+        # Core LSTM gates (single block)
+        self.Wz = SimpleBlockDiagonal(input_size, hidden_size)
+        self.Wi = SimpleBlockDiagonal(input_size, hidden_size)
+        self.Wf = SimpleBlockDiagonal(input_size, hidden_size)
+        self.Wo = SimpleBlockDiagonal(input_size, hidden_size)
 
-        self.Rz = SimpleBlockDiagonal(hidden_size, hidden_size, num_heads)
-        self.Ri = SimpleBlockDiagonal(hidden_size, hidden_size, num_heads)
-        self.Rf = SimpleBlockDiagonal(hidden_size, hidden_size, num_heads)
-        self.Ro = SimpleBlockDiagonal(hidden_size, hidden_size, num_heads)
+        self.Rz = SimpleBlockDiagonal(hidden_size, hidden_size)
+        self.Ri = SimpleBlockDiagonal(hidden_size, hidden_size)
+        self.Rf = SimpleBlockDiagonal(hidden_size, hidden_size)
+        self.Ro = SimpleBlockDiagonal(hidden_size, hidden_size)
 
     def forward(self, x, state):
         h_prev, c_prev = state
@@ -66,18 +61,18 @@ class SimpleSLSTMBlock(nn.Module):
         return h_t, (h_t, c_t)
 
 class SimpleMLSTMBlock(nn.Module):
-    """Simplified mLSTM block - attention-based LSTM"""
-    def __init__(self, input_size, hidden_size, num_heads=1):
+    """Simplified mLSTM block - attention-based LSTM (single block)"""
+    def __init__(self, input_size, hidden_size):
         super().__init__()
         self.hidden_size = hidden_size
-        self.head_size = hidden_size // num_heads
+        self.head_size = hidden_size  # single block
         self.layer_norm = nn.LayerNorm(input_size)
         self.causal_conv = SimpleCausalConv1D(1, 1, 3)
 
-        # Attention components
-        self.Wq = SimpleBlockDiagonal(input_size, hidden_size, num_heads)
-        self.Wk = SimpleBlockDiagonal(input_size, hidden_size, num_heads)
-        self.Wv = SimpleBlockDiagonal(input_size, hidden_size, num_heads)
+        # Attention components (single block)
+        self.Wq = SimpleBlockDiagonal(input_size, hidden_size)
+        self.Wk = SimpleBlockDiagonal(input_size, hidden_size)
+        self.Wv = SimpleBlockDiagonal(input_size, hidden_size)
 
         # LSTM gates
         self.Wi = nn.Linear(input_size, hidden_size)
@@ -105,11 +100,11 @@ class SimpleMLSTMBlock(nn.Module):
         return h_t, (h_t, c_t)
 
 class SimpleXLSTMBlock(nn.Module):
-    """Simplified xLSTM block combining sLSTM and mLSTM"""
-    def __init__(self, input_size, hidden_size, num_heads=1):
+    """Simplified xLSTM block combining sLSTM and mLSTM (single block)"""
+    def __init__(self, input_size, hidden_size):
         super().__init__()
-        self.slstm = SimpleSLSTMBlock(input_size, hidden_size, num_heads)
-        self.mlstm = SimpleMLSTMBlock(input_size, hidden_size, num_heads)
+        self.slstm = SimpleSLSTMBlock(input_size, hidden_size)
+        self.mlstm = SimpleMLSTMBlock(input_size, hidden_size)
 
     def forward(self, x, state):
         s_out, s_state = self.slstm(x, state)
@@ -122,43 +117,46 @@ class SimpleXLSTMBlock(nn.Module):
         return h_out, (h_out, c_out)
 
 class SimpleXLSTM(nn.Module):
-    """Simplified xLSTM model"""
-    def __init__(self, input_size, hidden_size, num_heads=1, num_layers=1, batch_first=False):
+    """Simplified xLSTM model with optional dropout between layers (single block)"""
+    def __init__(self, input_size, hidden_size, num_layers=1, batch_first=False, dropout=0.0):
         super().__init__()
         self.batch_first = batch_first
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        
-        # Single layer for simplicity
-        self.xlstm_layer = SimpleXLSTMBlock(input_size, hidden_size, num_heads)
+        self.dropout = nn.Dropout(dropout)
+        self.layers = nn.ModuleList([
+            SimpleXLSTMBlock(input_size if i == 0 else hidden_size, hidden_size)
+            for i in range(num_layers)
+        ])
 
     def forward(self, x, state=None):
         if self.batch_first:
             x = x.transpose(0, 1)
-
         seq_len, batch_size, _ = x.shape
-
         if state is None:
             state = (torch.zeros(batch_size, self.hidden_size, device=x.device),
-                    torch.zeros(batch_size, self.hidden_size, device=x.device))
-
+                     torch.zeros(batch_size, self.hidden_size, device=x.device))
         outputs = []
         for t in range(seq_len):
             x_t = x[t]
-            h_t, state = self.xlstm_layer(x_t, state)
+            for i, layer in enumerate(self.layers):
+                h_t, state = layer(x_t, state)
+                # Apply dropout after each layer except the last
+                if i < self.num_layers - 1:
+                    h_t = self.dropout(h_t)
+                x_t = h_t
             outputs.append(h_t)
-
         out = torch.stack(outputs)
         if self.batch_first:
             out = out.transpose(0, 1)
         return out, state
 
 class SimpleXLSTMClassifier(nn.Module):
-    """Simplified xLSTM classifier"""
-    def __init__(self, input_size, hidden_size, num_heads=1, num_layers=1, num_classes=10, batch_first=False):
+    """Simplified xLSTM classifier (single block)"""
+    def __init__(self, input_size, hidden_size, num_layers=1, num_classes=10, batch_first=False, dropout=0.3):
         super().__init__()
-        self.xlstm = SimpleXLSTM(input_size, hidden_size, num_heads, num_layers, batch_first)
-        self.dropout = nn.Dropout(0.3)  # Add dropout to reduce overfitting
+        self.xlstm = SimpleXLSTM(input_size, hidden_size, num_layers, batch_first, dropout)
+        self.dropout = nn.Dropout(dropout)  # Use configurable dropout for final layer
         self.classifier = nn.Linear(hidden_size, num_classes)
 
     def forward(self, x):
@@ -168,7 +166,6 @@ class SimpleXLSTMClassifier(nn.Module):
             last_hidden = out[:, -1, :]
         else:
             last_hidden = out[-1, :, :]
-        
         # Apply dropout before classification
         last_hidden = self.dropout(last_hidden)
         return self.classifier(last_hidden)

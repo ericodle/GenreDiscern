@@ -66,6 +66,12 @@ def load_data(data_path):
 
     print("Data succesfully loaded!")
 
+    # Print label distribution for diagnostics
+    unique, counts = np.unique(y, return_counts=True)
+    print("Label distribution:")
+    for label, count in zip(unique, counts):
+        print(f"  Label {label}: {count} samples")
+
     return X, y
 
 def test_xlstm_model(model, test_dataloader, device='cpu'):
@@ -454,7 +460,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     # Training hyperparameters
     initial_lr = float(initial_lr)
-    n_epochs = 100  # Increased from 50 to 100
+    n_epochs = 100  # Increased from 50 to 100. Increase further if not overfitting.
     iterations_per_epoch = len(train_dataloader)
     best_acc = 0
     patience, trials = 5, 0  # Reduced patience to prevent overfitting
@@ -463,11 +469,11 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     if model_type == 'xLSTM':
         model = xlstm.SimpleXLSTMClassifier(
             input_size=16,  # Use padded MFCC features
-            hidden_size=128,  # Can be larger since model is simpler
-            num_heads=4,  # Can use more heads since model is simpler
-            num_layers=1,  # Keep single layer for simplicity
+            hidden_size=128,  # Increased hidden size for more capacity
+            num_layers=2,     # Increased number of layers
             num_classes=10,  
-            batch_first=True
+            batch_first=True,
+            dropout=0.4      # Increased dropout for more regularization
         )
     else:
         raise ValueError("Invalid model_type")
@@ -483,9 +489,9 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     opt = torch.optim.Adam(model.parameters(), lr=initial_lr, weight_decay=1e-3, eps=1e-8)
 
     # Use a more conservative learning rate schedule
-    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='max', factor=0.7, patience=10, min_lr=1e-7)
+    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='max', factor=0.7, patience=1, min_lr=1e-7)
 
-    print(f'Training {model_type} model with learning rate of {initial_lr}.')
+    print(f'Training {model_type} model with learning rate of {initial_lr}. (Try 0.0005 if plateauing)')
 
     import matplotlib.pyplot as plt
     from collections import defaultdict
