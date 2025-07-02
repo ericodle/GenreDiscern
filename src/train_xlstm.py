@@ -475,12 +475,12 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     # Initialize model based on model_type
     if model_type == 'xLSTM':
         model = xlstm.SimpleXLSTMClassifier(
-            input_size=16,  # Use padded MFCC features
-            hidden_size=128,  # Increased hidden size for more capacity
-            num_layers=2,     # Increased number of layers
+            input_size=16,  
+            hidden_size=128,  
+            num_layers=2,     
             num_classes=10,  
             batch_first=True,
-            dropout=0.4      # Increased dropout for more regularization
+            dropout=0.2      
         )
     else:
         raise ValueError("Invalid model_type")
