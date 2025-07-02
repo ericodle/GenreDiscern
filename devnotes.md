@@ -7,3 +7,6 @@ python src/MFCC_extraction.py /home/eo/Documents/genres_original/ ./output/ gtza
 # 3 train
 python3 src/train_xlstm.py ./output/gtzan_mfcc.json xLSTM ./output 0.001
 
+
+acess tensorboard
+tensorboard --logdir=output/

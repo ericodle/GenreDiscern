@@ -19,6 +19,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset 
 import models, xlstm
 import time
+from torch.utils.tensorboard import SummaryWriter
 
 # Enable mixed precision training for faster training
 from torch.amp import autocast, GradScaler
@@ -135,14 +136,16 @@ def plot_roc_curve(y_true, y_probs, class_names, output_directory):
     '''
     Plots class-wise ROC AUC scores. 
     '''
-    auc_file = os.path.join(output_directory, 'auc.txt')
+    training_imgs_dir = os.path.join(output_directory, 'training_imgs')
+    os.makedirs(training_imgs_dir, exist_ok=True)
+    auc_file = os.path.join(training_imgs_dir, 'auc.txt')
     with open(auc_file, 'w') as f:
         for class_idx in range(y_probs.shape[1]):
             fpr, tpr, _ = roc_curve(y_true == class_idx, y_probs[:, class_idx])
             roc_auc = auc(fpr, tpr)
             f.write(f'{class_names[class_idx]}: {roc_auc:.2f}\n')
     
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(8, 6), constrained_layout=True)
     for class_idx in range(y_probs.shape[1]):
         fpr, tpr, _ = roc_curve(y_true == class_idx, y_probs[:, class_idx])
         roc_auc = auc(fpr, tpr)
@@ -151,8 +154,8 @@ def plot_roc_curve(y_true, y_probs, class_names, output_directory):
     plt.ylabel('True Positive Rate')
     plt.title('ROC Curves')
     plt.legend(loc='lower right')  # Adjust legend position
-    output_file = os.path.join(output_directory, 'ROC.png')
-    plt.savefig(output_file)
+    output_file = os.path.join(training_imgs_dir, 'ROC.png')
+    plt.savefig(output_file, bbox_inches='tight')
     plt.close()
 
 def save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory):
@@ -171,17 +174,19 @@ def save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, outpu
 
     # Save confusion matrix to image
     df_cm = pd.DataFrame(arr, class_names, class_names)
-    plt.figure(figsize=(10, 7))
+    plt.figure(figsize=(10, 7), constrained_layout=True)
     sns.heatmap(df_cm, annot=True, fmt="d", cmap='BuGn')
     plt.xlabel("Predictions")
     plt.ylabel("Ground Truths")
     plt.title('Confusion Matrix', fontsize=15)
-    output_file = os.path.join(output_directory, 'confusion_matrix.png')
-    plt.savefig(output_file)
+    training_imgs_dir = os.path.join(output_directory, 'training_imgs')
+    os.makedirs(training_imgs_dir, exist_ok=True)
+    output_file = os.path.join(training_imgs_dir, 'confusion_matrix.png')
+    plt.savefig(output_file, bbox_inches='tight')
     plt.close()
 
     # Save accuracy metrics to text file
-    metrics_file = os.path.join(output_directory, 'confusion_metrics.txt')
+    metrics_file = os.path.join(training_imgs_dir, 'confusion_metrics.txt')
     with open(metrics_file, 'w') as f:
         f.write("Classification Report:\n")
         f.write(df_report.to_string())
@@ -234,6 +239,8 @@ def plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_direc
     '''
     epochs = range(1, len(train_loss) + 1)
 
+    training_imgs_dir = os.path.join(output_directory, 'training_imgs')
+    os.makedirs(training_imgs_dir, exist_ok=True)
     fig, ax1 = plt.subplots(figsize=(10, 5), dpi=600)
 
     color = 'tab:red'
@@ -254,7 +261,7 @@ def plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_direc
     fig.tight_layout(rect=[0.05, 0.05, 0.9, 0.9])  # Adjusting layout to leave space for title and legend
     fig.legend(loc='upper left', bbox_to_anchor=(1,1))  # Moving legend outside the plot
     plt.title('Learning Metrics', pad=20)  # Adding padding to the title
-    plt.savefig(os.path.join(output_directory, "learning_metrics.png"), bbox_inches='tight')  # Use bbox_inches='tight' to prevent cutting off
+    plt.savefig(os.path.join(training_imgs_dir, "learning_metrics.png"), bbox_inches='tight')  # Use bbox_inches='tight' to prevent cutting off
     plt.close()
 
 def plot_comprehensive_training_metrics(train_loss, val_loss, train_acc, val_acc, learning_rates, output_directory):
@@ -460,10 +467,10 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     # Training hyperparameters
     initial_lr = float(initial_lr)
-    n_epochs = 100  # Increased from 50 to 100. Increase further if not overfitting.
+    n_epochs = 100000  # Increased from 50 to 100. Increase further if not overfitting.
     iterations_per_epoch = len(train_dataloader)
     best_acc = 0
-    patience, trials = 5, 0  # Reduced patience to prevent overfitting
+    patience, trials = 2, 0  # Reduced patience to prevent overfitting
 
     # Initialize model based on model_type
     if model_type == 'xLSTM':
@@ -491,10 +498,19 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     # Use a more conservative learning rate schedule
     sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='max', factor=0.7, patience=1, min_lr=1e-7)
 
-    print(f'Training {model_type} model with learning rate of {initial_lr}. (Try 0.0005 if plateauing)')
+    print(f'Training {model_type} model with learning rate of {initial_lr}.')
 
     import matplotlib.pyplot as plt
     from collections import defaultdict
+
+    writer = SummaryWriter(log_dir=output_directory)  # TensorBoard writer
+    writer.add_text('info', 'Training started', 0)
+    # Log model graph (only works if you have a sample input)
+    try:
+        sample_input = torch.zeros(1, 100, 16).to(device)  # (batch, seq_len, input_size)
+        writer.add_graph(model, sample_input)
+    except Exception as e:
+        print(f"Could not log model graph: {e}")
 
     if model_type == "xLSTM":
 
@@ -521,28 +537,37 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                     out = model(x_batch)
                     loss = criterion(out, y_batch)
                 
-                # Check for NaN loss
-                if torch.isnan(loss):
-                    log_file = os.path.join(output_directory, 'gradient_stats.txt')
-                    with open(log_file, 'a') as f:
-                        f.write(f"NaN loss detected at batch {batch_idx}, skipping...\n")
-                    continue
-                    
+                # Log input images (MFCCs as heatmaps) for the first batch of the first epoch
+                if epoch == 1 and batch_idx == 0:
+                    # MFCCs: shape (batch, seq_len, n_mfcc=16)
+                    # Log the first sample as an image (as a heatmap)
+                    mfcc_img = x_batch[0].detach().cpu().numpy().T  # shape (n_mfcc, seq_len)
+                    import matplotlib.pyplot as plt
+                    import io
+                    from PIL import Image
+                    fig, ax = plt.subplots()
+                    cax = ax.imshow(mfcc_img, aspect='auto', origin='lower')
+                    plt.colorbar(cax)
+                    ax.set_title('MFCC (Sample 0)')
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format='png')
+                    buf.seek(0)
+                    image = Image.open(buf)
+                    import torchvision.transforms as transforms
+                    image_tensor = transforms.ToTensor()(image)
+                    writer.add_image('Input/MFCC_Sample0', image_tensor, 0)
+                    plt.close(fig)
+                    buf.close()
+                
                 # Scale loss and backward pass
                 scaler.scale(loss).backward()
 
-                # Check for NaN gradients
-                has_nan_grad = False
-                for name, param in model.named_parameters():
-                    if param.grad is not None and torch.isnan(param.grad).any():
-                        log_file = os.path.join(output_directory, 'gradient_stats.txt')
-                        with open(log_file, 'a') as f:
-                            f.write(f"NaN gradient detected in {name}, skipping batch...\n")
-                        has_nan_grad = True
-                        break
-                
-                if has_nan_grad:
-                    continue
+                # Log histograms of weights and gradients (first batch of each epoch)
+                if batch_idx == 0:
+                    for name, param in model.named_parameters():
+                        writer.add_histogram(f'Weights/{name}', param, epoch)
+                        if param.grad is not None:
+                            writer.add_histogram(f'Gradients/{name}', param.grad, epoch)
 
                 # Collect gradient norms and raw values (only every 5 batches to save time)
                 if batch_idx % 5 == 0:
@@ -551,6 +576,8 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                             grad = param.grad.detach().cpu()
                             gradient_norms[name].append(grad.norm().item())
                             gradient_values[name].append(grad.view(-1))
+                            # TensorBoard: log gradient norm per parameter per batch
+                            writer.add_scalar(f'GradNorm/{name}', grad.norm().item(), epoch * len(train_dataloader) + batch_idx)
 
                 # Optimizer step with scaler
                 scaler.step(opt)
@@ -579,11 +606,20 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 print(f"WARNING: Epoch {epoch} - No batches were processed (all skipped due to NaN detection)")
             print(f"Epoch {epoch} training done. Avg Loss: {train_loss_epoch:.4f}, Acc: {train_acc_epoch:.2f}%")
 
+            # TensorBoard: log metrics after each epoch
+            writer.add_scalar('Loss/Train', train_loss_epoch, epoch)
+            writer.add_scalar('Loss/Validation', val_loss_epoch if 'val_loss_epoch' in locals() else 0, epoch)
+            writer.add_scalar('Accuracy/Train', train_acc_epoch, epoch)
+            writer.add_scalar('Accuracy/Validation', val_acc_epoch if 'val_acc_epoch' in locals() else 0, epoch)
+            writer.add_scalar('LearningRate', opt.param_groups[0]['lr'], epoch)
+
             # -----------------------------------------
             # Log gradient stats to file after training epoch (only if we have gradients)
             # -----------------------------------------
             if gradient_values:  # Only log if we collected gradients
-                log_file = os.path.join(output_directory, 'gradient_stats.txt')
+                training_imgs_dir = os.path.join(output_directory, 'training_imgs')
+                os.makedirs(training_imgs_dir, exist_ok=True)
+                log_file = os.path.join(training_imgs_dir, 'gradient_stats.txt')
                 with open(log_file, 'a') as f:
                     f.write(f"\n[Gradient Statistics for Epoch {epoch}]\n")
                     for name, grads in gradient_values.items():
@@ -598,8 +634,11 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
             # -----------------------------------------
             # Plot gradient norms over batches (only if we have gradients)
             # -----------------------------------------
-            if gradient_norms:  # Only plot if we collected gradients
-                fig, ax = plt.subplots(figsize=(10, 6))
+            if gradient_norms and any(len(norms) > 0 for norms in gradient_norms.values()):
+                # Save in a run-specific subdirectory
+                training_imgs_dir = os.path.join(output_directory, 'training_imgs')
+                os.makedirs(training_imgs_dir, exist_ok=True)
+                fig, ax = plt.subplots(figsize=(12, 8))
                 for name, norms in gradient_norms.items():
                     ax.plot(norms, label=name)
                 ax.set_title(f"Gradient Norms - Epoch {epoch}")
@@ -607,8 +646,10 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 ax.set_ylabel("Gradient Norm")
                 ax.legend(fontsize='small', loc='upper right')
                 plt.tight_layout()
-                plt.savefig(os.path.join(output_directory, f"gradient_norms_epoch_{epoch}.png"))
+                plt.savefig(os.path.join(training_imgs_dir, f"gradient_norms_epoch_{epoch}.png"), bbox_inches='tight')
                 plt.close()
+            else:
+                print(f"No gradient norms to plot for epoch {epoch}.")
 
             # Validation loop
             model.eval()
@@ -653,6 +694,8 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
 
     print("Training finished!")
+    writer.add_text('info', 'Training finished', n_epochs)
+    writer.close()  # Close TensorBoard writer
 
     if model_type == "xLSTM":
         plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
