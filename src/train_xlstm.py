@@ -631,26 +631,6 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                             grad_max = flat_grads.max().item()
                             f.write(f"{name:40s} | mean: {grad_mean: .5e} | std: {grad_std: .5e} | min: {grad_min: .5e} | max: {grad_max: .5e}\n")
 
-            # -----------------------------------------
-            # Plot gradient norms over batches (only if we have gradients)
-            # -----------------------------------------
-            if gradient_norms and any(len(norms) > 0 for norms in gradient_norms.values()):
-                # Save in a run-specific subdirectory
-                training_imgs_dir = os.path.join(output_directory, 'training_imgs')
-                os.makedirs(training_imgs_dir, exist_ok=True)
-                fig, ax = plt.subplots(figsize=(12, 8))
-                for name, norms in gradient_norms.items():
-                    ax.plot(norms, label=name)
-                ax.set_title(f"Gradient Norms - Epoch {epoch}")
-                ax.set_xlabel("Batch")
-                ax.set_ylabel("Gradient Norm")
-                ax.legend(fontsize='small', loc='upper right')
-                plt.tight_layout()
-                plt.savefig(os.path.join(training_imgs_dir, f"gradient_norms_epoch_{epoch}.png"), bbox_inches='tight')
-                plt.close()
-            else:
-                print(f"No gradient norms to plot for epoch {epoch}.")
-
             # Validation loop
             model.eval()
             vcorrect, vtotal = 0, 0
