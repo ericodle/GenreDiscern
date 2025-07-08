@@ -1,4 +1,0 @@
-batch_size,hidden_size,num_layers,dropout,optimizer,initial_lr,init,class_weight,output_dir,test_accuracy
-32,64,1,0.1,adam,0.001,default,none,./output/gridsearch/run_0,0.5555555555555556
-32,64,1,0.1,adam,0.001,default,auto,./output/gridsearch/run_1,0.3111111111111111
-32,64,1,0.1,adam,0.001,xavier,none,./output/gridsearch/run_2,0.6686868686868687

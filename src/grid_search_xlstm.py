@@ -4,15 +4,15 @@ import pandas as pd
 import os
 import sys
 
-# Define grid
-BATCH_SIZES = [32, 64]
-HIDDEN_SIZES = [64, 128]
+# Focused grid based on best result
+BATCH_SIZES = [24, 32, 40]
+HIDDEN_SIZES = [48, 64, 96]
 NUM_LAYERS = [1, 2]
-DROPOUTS = [0.1, 0.2]
-OPTIMIZERS = ['adam', 'rmsprop']
-LRS = [0.001, 0.0005]
-INITS = ['default', 'xavier']
-CLASS_WEIGHTS = ['none', 'auto']
+DROPOUTS = [0.05, 0.1, 0.15]
+OPTIMIZERS = ['adam']
+LRS = [0.001]
+INITS = ['xavier']
+CLASS_WEIGHTS = ['none']
 
 MFCC_PATH = './output/gtzan_mfcc.json'
 MODEL_TYPE = 'xLSTM'
@@ -27,6 +27,15 @@ if os.path.exists(RESULTS_CSV):
 else:
     existing_results = pd.DataFrame()
 
+def config_to_dirname(config):
+    # Use p for . to avoid issues in folder names
+    return (
+        f"bs{config['batch_size']}_hs{config['hidden_size']}_nl{config['num_layers']}"
+        f"_do{str(config['dropout']).replace('.', 'p')}"
+        f"_opt{config['optimizer']}_lr{str(config['initial_lr']).replace('.', 'p')}"
+        f"_init{config['init']}_cw{config['class_weight']}"
+    )
+
 def config_exists(config, existing_results):
     if existing_results.empty:
         return False
@@ -40,8 +49,10 @@ def config_exists(config, existing_results):
            (existing_results['class_weight'] == config['class_weight'])
     return mask.any() and not pd.isnull(existing_results.loc[mask, 'test_accuracy']).all()
 
-def run_one(config, run_idx):
-    output_dir = os.path.join(OUTPUT_BASE, f'run_{run_idx}')
+def run_one(config, run_number):
+    output_dir = os.path.join(OUTPUT_BASE, config_to_dirname(config))
+    if os.path.exists(output_dir) and os.listdir(output_dir):
+        print(f"Warning: Output directory {output_dir} already exists and is not empty. Contents may be overwritten.")
     os.makedirs(output_dir, exist_ok=True)
     cmd = [
         sys.executable, 'src/train_xlstm.py',
@@ -69,6 +80,7 @@ def run_one(config, run_idx):
     result = config.copy()
     result['output_dir'] = output_dir
     result['test_accuracy'] = acc
+    result['run_number'] = run_number
     return result
 
 def main():
@@ -89,15 +101,17 @@ def main():
         })
     print(f'Total runs: {len(configs)}')
     all_results = existing_results.to_dict('records') if not existing_results.empty else []
+    run_number = 1 if existing_results.empty else (existing_results['run_number'].max() + 1)
     for i, config in enumerate(configs):
         if config_exists(config, existing_results):
             print(f"Skipping already completed run {i+1}/{len(configs)}: {config}")
             continue
-        print(f'\n=== Grid Search Run {i+1}/{len(configs)} ===')
-        result = run_one(config, i)
+        print(f'\n=== Grid Search Run {run_number} (grid idx {i+1}/{len(configs)}) ===')
+        result = run_one(config, run_number)
         all_results.append(result)
         # Save intermediate results
         pd.DataFrame(all_results).to_csv(RESULTS_CSV, index=False)
+        run_number += 1
     print('\nGrid search complete. Results:')
     print(pd.DataFrame(all_results).sort_values('test_accuracy', ascending=False).head())
 
