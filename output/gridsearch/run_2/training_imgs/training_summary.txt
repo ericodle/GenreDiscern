@@ -1,0 +1,18 @@
+=== TRAINING SUMMARY ===
+
+Total Epochs: 21
+Final Training Loss: 0.945331
+Final Validation Loss: 1.457883
+Final Training Accuracy: 69.44%
+Final Validation Accuracy: 51.01%
+Initial Learning Rate: 1.00e-03
+Final Learning Rate: 7.00e-04
+Learning Rate Reduction: 1.4x
+
+Loss Improvement: 1.298476
+Accuracy Improvement: 48.11%
+
+Overfitting Analysis:
+Loss Gap (Train-Val): -0.512552
+Accuracy Gap (Val-Train): -18.43%
+✅ Training appears balanced
