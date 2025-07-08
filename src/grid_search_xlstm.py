@@ -21,7 +21,24 @@ EPOCH_PATIENCE = 1  # For quick runs
 
 os.makedirs(OUTPUT_BASE, exist_ok=True)
 
-results = []
+RESULTS_CSV = os.path.join(OUTPUT_BASE, 'grid_search_results.csv')
+if os.path.exists(RESULTS_CSV):
+    existing_results = pd.read_csv(RESULTS_CSV)
+else:
+    existing_results = pd.DataFrame()
+
+def config_exists(config, existing_results):
+    if existing_results.empty:
+        return False
+    mask = (existing_results['batch_size'] == config['batch_size']) & \
+           (existing_results['hidden_size'] == config['hidden_size']) & \
+           (existing_results['num_layers'] == config['num_layers']) & \
+           (existing_results['dropout'] == config['dropout']) & \
+           (existing_results['optimizer'] == config['optimizer']) & \
+           (existing_results['initial_lr'] == config['initial_lr']) & \
+           (existing_results['init'] == config['init']) & \
+           (existing_results['class_weight'] == config['class_weight'])
+    return mask.any() and not pd.isnull(existing_results.loc[mask, 'test_accuracy']).all()
 
 def run_one(config, run_idx):
     output_dir = os.path.join(OUTPUT_BASE, f'run_{run_idx}')
@@ -71,13 +88,16 @@ def main():
             'class_weight': vals[7],
         })
     print(f'Total runs: {len(configs)}')
-    all_results = []
+    all_results = existing_results.to_dict('records') if not existing_results.empty else []
     for i, config in enumerate(configs):
+        if config_exists(config, existing_results):
+            print(f"Skipping already completed run {i+1}/{len(configs)}: {config}")
+            continue
         print(f'\n=== Grid Search Run {i+1}/{len(configs)} ===')
         result = run_one(config, i)
         all_results.append(result)
         # Save intermediate results
-        pd.DataFrame(all_results).to_csv(os.path.join(OUTPUT_BASE, 'grid_search_results.csv'), index=False)
+        pd.DataFrame(all_results).to_csv(RESULTS_CSV, index=False)
     print('\nGrid search complete. Results:')
     print(pd.DataFrame(all_results).sort_values('test_accuracy', ascending=False).head())
 
