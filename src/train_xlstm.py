@@ -20,6 +20,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import models, xlstm
 import time
 from torch.utils.tensorboard import SummaryWriter
+import argparse
 
 # Enable mixed precision training for faster training
 from torch.amp import autocast, GradScaler
@@ -424,7 +425,7 @@ def plot_comprehensive_training_metrics(train_loss, val_loss, train_acc, val_acc
 # MAIN
 ########################################################################
 
-def main(mfcc_path, model_type, output_directory, initial_lr):
+def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=128, hidden_size=256, num_layers=2, dropout=0.2, optimizer_name='adam', grad_clip=None, init_type='default', class_weight_arg='none'):
     '''
     Main function for training and evaluating multiple deep learning models (Fully Connected, CNN, LSTM, xLSTM, GRU, and Transformer) for music genre classification using Mel Frequency Cepstral Coefficients (MFCCs). 
     This function employs PyTorch for model training and evaluation, utilizes cyclic learning rates for optimization, and includes functionalities for plotting learning metrics, testing model accuracy, generating confusion matrices, and computing ROC AUC scores. 
@@ -454,10 +455,10 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     test_dataset = TensorDataset(tensor_X_test, tensor_y_test)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
 
-    test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
 
     train_loss = [] 
     val_loss = []   
@@ -476,29 +477,62 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     if model_type == 'xLSTM':
         model = xlstm.SimpleXLSTMClassifier(
             input_size=16,  
-            hidden_size=128,  
-            num_layers=2,     
+            hidden_size=hidden_size,  
+            num_layers=num_layers,     
             num_classes=10,  
             batch_first=True,
-            dropout=0.2      
+            dropout=dropout      
         )
     else:
         raise ValueError("Invalid model_type")
  
     model = model.to(device)
 
-    criterion = nn.CrossEntropyLoss()
+    # Weight initialization
+    def init_weights(m):
+        if isinstance(m, torch.nn.Linear):
+            if init_type == 'xavier':
+                torch.nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias)
+            elif init_type == 'he':
+                torch.nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias)
+    if init_type != 'default':
+        model.apply(init_weights)
+
+    # Class weights
+    if class_weight_arg == 'auto':
+        labels_np = y_train if isinstance(y_train, np.ndarray) else y_train.numpy()
+        class_sample_count = np.bincount(labels_np.astype(int))
+        class_weights = 1. / (class_sample_count + 1e-8)
+        class_weights = class_weights / class_weights.sum() * len(class_sample_count)
+        class_weights = torch.tensor(class_weights, dtype=torch.float32, device=device)
+    elif class_weight_arg == 'none':
+        class_weights = None
+    else:
+        # Parse comma-separated list
+        class_weights = torch.tensor([float(x) for x in class_weight_arg.split(',')], dtype=torch.float32, device=device)
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
     
     # Initialize gradient scaler for mixed precision training
     scaler = GradScaler()
 
-    # Use Adam optimizer with better default settings
-    opt = torch.optim.Adam(model.parameters(), lr=initial_lr, weight_decay=1e-3, eps=1e-8)
+    # Optimizer selection
+    if optimizer_name == 'adam':
+        opt = torch.optim.Adam(model.parameters(), lr=initial_lr, weight_decay=1e-3, eps=1e-8)
+    elif optimizer_name == 'sgd':
+        opt = torch.optim.SGD(model.parameters(), lr=initial_lr, momentum=0.9, weight_decay=1e-3)
+    elif optimizer_name == 'rmsprop':
+        opt = torch.optim.RMSprop(model.parameters(), lr=initial_lr, weight_decay=1e-3)
+    else:
+        raise ValueError(f"Unsupported optimizer: {optimizer_name}")
 
     # Use a more conservative learning rate schedule
     sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode='max', factor=0.7, patience=1, min_lr=1e-7)
 
-    print(f'Training {model_type} model with learning rate of {initial_lr}.')
+    print(f'Training {model_type} model with learning rate of {initial_lr}, batch size {batch_size}, hidden size {hidden_size}, num layers {num_layers}, dropout {dropout}, optimizer {optimizer_name}.')
 
     import matplotlib.pyplot as plt
     from collections import defaultdict
@@ -561,6 +595,11 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
                 
                 # Scale loss and backward pass
                 scaler.scale(loss).backward()
+
+                # Gradient clipping
+                if grad_clip is not None:
+                    scaler.unscale_(opt)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
 
                 # Log histograms of weights and gradients (first batch of each epoch)
                 if batch_idx == 0:
@@ -699,16 +738,48 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
         plot_comprehensive_training_metrics(train_loss, val_loss, train_acc, val_acc, learning_rates, output_directory)
 
-if __name__ == '__main__':
-    # Retrieve command-line arguments
-    args = sys.argv[1:]
+        # Save predictions vs. ground truth to CSV
+        import pandas as pd
+        pred_df = pd.DataFrame({
+            'sample_idx': range(len(ground_truth)),
+            'true_label': ground_truth.numpy(),
+            'predicted_label': predicted_genres.numpy(),
+        })
+        for i, cname in enumerate(class_names):
+            pred_df[f'prob_{cname}'] = predicted_probs[:, i].numpy()
+        pred_csv_path = os.path.join(output_directory, 'predictions_vs_ground_truth.csv')
+        pred_df.to_csv(pred_csv_path, index=False)
+        print(f'Predictions and probabilities saved to {pred_csv_path}')
 
-    # Check if there are command-line arguments
-    if len(args) >= 4:
-        mfcc_path = args[0]
-        model_type = args[1]
-        output_directory = args[2]
-        initial_lr = float(args[3])
-        main(mfcc_path, model_type, output_directory, initial_lr)
-    else:
-        print("Please provide all required arguments: mfcc_path, model_type, output_directory, initial_lr")
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Train xLSTM for genre classification')
+    parser.add_argument('mfcc_path', type=str, help='Path to MFCC JSON file')
+    parser.add_argument('model_type', type=str, help='Model type (should be xLSTM)')
+    parser.add_argument('output_directory', type=str, help='Directory to save outputs')
+    parser.add_argument('initial_lr', type=float, help='Initial learning rate')
+    parser.add_argument('--batch_size', type=int, default=128, help='Batch size (default: 128)')
+    parser.add_argument('--hidden_size', type=int, default=256, help='Hidden size (default: 256)')
+    parser.add_argument('--num_layers', type=int, default=2, help='Number of LSTM layers (default: 2)')
+    parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate (default: 0.2)')
+    parser.add_argument('--optimizer', type=str, default='adam', choices=['adam', 'sgd', 'rmsprop'], help='Optimizer (default: adam)')
+    parser.add_argument('--grad_clip', type=float, default=None, help='Gradient clipping value (default: None)')
+    parser.add_argument('--init', type=str, default='default', choices=['default', 'xavier', 'he'], help='Weight initialization (default, xavier, he)')
+    parser.add_argument('--class_weight', type=str, default='none', help='Class weighting: "auto", "none", or comma-separated list (e.g. 1.0,0.5,...)')
+    args = parser.parse_args()
+
+    def main_with_args():
+        main(
+            args.mfcc_path,
+            args.model_type,
+            args.output_directory,
+            args.initial_lr,
+            batch_size=args.batch_size,
+            hidden_size=args.hidden_size,
+            num_layers=args.num_layers,
+            dropout=args.dropout,
+            optimizer_name=args.optimizer,
+            grad_clip=args.grad_clip,
+            init_type=args.init,
+            class_weight_arg=args.class_weight
+        )
+    main_with_args()

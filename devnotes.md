@@ -10,3 +10,5 @@ python3 src/train_xlstm.py ./output/gtzan_mfcc.json xLSTM ./output 0.001
 
 acess tensorboard
 tensorboard --logdir=output/
+
+  python src/grid_search_xlstm.py
