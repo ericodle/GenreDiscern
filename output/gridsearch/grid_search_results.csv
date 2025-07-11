@@ -1,3 +1,10 @@
 batch_size,hidden_size,num_layers,dropout,optimizer,initial_lr,init,class_weight,output_dir,test_accuracy,run_number
 24,48,1,0.05,adam,0.001,xavier,none,./output/gridsearch/bs24_hs48_nl1_do0p05_optadam_lr0p001_initxavier_cwnone,0.3484848484848485,1
 24,48,1,0.1,adam,0.001,xavier,none,./output/gridsearch/bs24_hs48_nl1_do0p1_optadam_lr0p001_initxavier_cwnone,0.5656565656565656,2
+24,48,1,0.15,adam,0.001,xavier,none,./output/gridsearch/bs24_hs48_nl1_do0p15_optadam_lr0p001_initxavier_cwnone,0.5787878787878787,3
+24,48,2,0.05,adam,0.001,xavier,none,./output/gridsearch/bs24_hs48_nl2_do0p05_optadam_lr0p001_initxavier_cwnone,0.5808080808080808,4
+24,48,2,0.1,adam,0.001,xavier,none,./output/gridsearch/bs24_hs48_nl2_do0p1_optadam_lr0p001_initxavier_cwnone,0.4858585858585859,5
+24,48,2,0.15,adam,0.001,xavier,none,./output/gridsearch/bs24_hs48_nl2_do0p15_optadam_lr0p001_initxavier_cwnone,0.32323232323232326,6
+24,64,1,0.05,adam,0.001,xavier,none,./output/gridsearch/bs24_hs64_nl1_do0p05_optadam_lr0p001_initxavier_cwnone,0.5353535353535354,7
+24,64,1,0.1,adam,0.001,xavier,none,./output/gridsearch/bs24_hs64_nl1_do0p1_optadam_lr0p001_initxavier_cwnone,0.5313131313131313,8
+24,64,1,0.15,adam,0.001,xavier,none,./output/gridsearch/bs24_hs64_nl1_do0p15_optadam_lr0p001_initxavier_cwnone,0.5878787878787879,9

@@ -4,13 +4,13 @@ import pandas as pd
 import os
 import sys
 
-# Focused grid based on best result
-BATCH_SIZES = [24, 32, 40]
-HIDDEN_SIZES = [48, 64, 96]
-NUM_LAYERS = [1, 2]
-DROPOUTS = [0.05, 0.1, 0.15]
+# Updated grid for requested sweep
+BATCH_SIZES = [24]
+HIDDEN_SIZES = [256]
+NUM_LAYERS = [2]
+DROPOUTS = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5]
 OPTIMIZERS = ['adam']
-LRS = [0.001]
+LRS = [0.0001, 0.001, 0.01, 0.1]
 INITS = ['xavier']
 CLASS_WEIGHTS = ['none']
 

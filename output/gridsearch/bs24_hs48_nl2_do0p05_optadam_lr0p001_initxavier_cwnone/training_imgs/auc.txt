@@ -1,0 +1,10 @@
+pop: 0.88
+classical: 0.80
+jazz: 0.92
+hiphop: 0.93
+reggae: 0.97
+disco: 0.83
+metal: 0.97
+country: 0.87
+blues: 0.99
+rock: 0.86
