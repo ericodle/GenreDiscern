@@ -698,17 +698,17 @@ def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=128, hi
 
             print(f"Epoch {epoch} validation done. Avg Loss: {val_loss_epoch:.4f}, Acc: {val_acc_epoch:.2f}%")
 
-            # Save best model
-            if val_acc_epoch / 100 > best_acc:
+            # Save best model and early stopping based on training accuracy
+            if train_acc_epoch / 100 > best_acc:
                 trials = 0
-                best_acc = val_acc_epoch / 100
+                best_acc = train_acc_epoch / 100
                 torch.save(model, os.path.join(output_directory, "model.bin"))
-                print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:.2%}')
+                print(f'Epoch {epoch} best model saved with train accuracy: {best_acc:.2%}')
             else:
                 trials += 1
                 if trials >= patience:
-                    print(f'Early stopping on epoch {epoch} due to no improvement in val accuracy.')
-                    print(f'Final best validation accuracy: {best_acc:.2%}')
+                    print(f'Early stopping on epoch {epoch} due to no improvement in train accuracy.')
+                    print(f'Final best training accuracy: {best_acc:.2%}')
                     break
 
 

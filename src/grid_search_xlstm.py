@@ -13,7 +13,7 @@ OPTIMIZERS = ['adam']
 LRS = [0.01]
 INITS = ['xavier']
 CLASS_WEIGHTS = ['auto']
-EPOCH_PATIENCES = [3, 4, 5]
+EPOCH_PATIENCES = [3, 4, 5, 6, 7, 8, 9, 10]
 
 MFCC_PATH = './mfccs/gtzan_mfcc.json'
 MODEL_TYPE = 'xLSTM'
