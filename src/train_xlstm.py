@@ -19,11 +19,12 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset 
 import models, xlstm
 import time
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.writer import SummaryWriter
 import argparse
 
 # Enable mixed precision training for faster training
-from torch.amp import autocast, GradScaler
+from torch.amp.autocast_mode import autocast
+from torch.amp.grad_scaler import GradScaler
 
 ########################################################################
 # INTENDED FOR USE WITH CUDA
@@ -259,7 +260,7 @@ def plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_direc
     ax2.plot(epochs, val_acc, label='Validation Accuracy', color='green')
     ax2.tick_params(axis='y', labelcolor=color)
 
-    fig.tight_layout(rect=[0.05, 0.05, 0.9, 0.9])  # Adjusting layout to leave space for title and legend
+    fig.tight_layout(rect=(0.05, 0.05, 0.9, 0.9))  # Adjusting layout to leave space for title and legend
     fig.legend(loc='upper left', bbox_to_anchor=(1,1))  # Moving legend outside the plot
     plt.title('Learning Metrics', pad=20)  # Adding padding to the title
     plt.savefig(os.path.join(training_imgs_dir, "learning_metrics.png"), bbox_inches='tight')  # Use bbox_inches='tight' to prevent cutting off
@@ -425,7 +426,7 @@ def plot_comprehensive_training_metrics(train_loss, val_loss, train_acc, val_acc
 # MAIN
 ########################################################################
 
-def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=128, hidden_size=256, num_layers=2, dropout=0.2, optimizer_name='adam', grad_clip=None, init_type='default', class_weight_arg='none'):
+def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=128, hidden_size=256, num_layers=2, dropout=0.2, optimizer_name='adam', grad_clip=None, init_type='default', class_weight_arg='none', epoch_patience=2):
     '''
     Main function for training and evaluating multiple deep learning models (Fully Connected, CNN, LSTM, xLSTM, GRU, and Transformer) for music genre classification using Mel Frequency Cepstral Coefficients (MFCCs). 
     This function employs PyTorch for model training and evaluation, utilizes cyclic learning rates for optimization, and includes functionalities for plotting learning metrics, testing model accuracy, generating confusion matrices, and computing ROC AUC scores. 
@@ -471,7 +472,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=128, hi
     n_epochs = 100000  # Increased from 50 to 100. Increase further if not overfitting.
     iterations_per_epoch = len(train_dataloader)
     best_acc = 0
-    patience, trials = 2, 0  # Reduced patience to prevent overfitting
+    patience, trials = epoch_patience, 0  # Use the passed-in epoch_patience
 
     # Initialize model based on model_type
     if model_type == 'xLSTM':
@@ -521,11 +522,11 @@ def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=128, hi
 
     # Optimizer selection
     if optimizer_name == 'adam':
-        opt = torch.optim.Adam(model.parameters(), lr=initial_lr, weight_decay=1e-3, eps=1e-8)
+        opt = optim.Adam(model.parameters(), lr=initial_lr, weight_decay=1e-3, eps=1e-8)
     elif optimizer_name == 'sgd':
-        opt = torch.optim.SGD(model.parameters(), lr=initial_lr, momentum=0.9, weight_decay=1e-3)
+        opt = optim.SGD(model.parameters(), lr=initial_lr, momentum=0.9, weight_decay=1e-3)
     elif optimizer_name == 'rmsprop':
-        opt = torch.optim.RMSprop(model.parameters(), lr=initial_lr, weight_decay=1e-3)
+        opt = optim.RMSprop(model.parameters(), lr=initial_lr, weight_decay=1e-3)
     else:
         raise ValueError(f"Unsupported optimizer: {optimizer_name}")
 
@@ -722,7 +723,7 @@ def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=128, hi
 
         # Test the xLSTM model
         ground_truth, predicted_genres, predicted_probs, accuracy = test_xlstm_model(
-            model, test_dataloader, device=device
+            model, test_dataloader, device=str(device)
         )
 
         print(f'Test accuracy: {accuracy * 100:.2f}%')
@@ -742,11 +743,11 @@ def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=128, hi
         import pandas as pd
         pred_df = pd.DataFrame({
             'sample_idx': range(len(ground_truth)),
-            'true_label': ground_truth.numpy(),
-            'predicted_label': predicted_genres.numpy(),
+            'true_label': ground_truth.cpu().numpy() if hasattr(ground_truth, 'cpu') else np.array(ground_truth),
+            'predicted_label': predicted_genres.cpu().numpy() if hasattr(predicted_genres, 'cpu') else np.array(predicted_genres),
         })
         for i, cname in enumerate(class_names):
-            pred_df[f'prob_{cname}'] = predicted_probs[:, i].numpy()
+            pred_df[f'prob_{cname}'] = predicted_probs[:, i].cpu().numpy() if hasattr(predicted_probs, 'cpu') else np.array(predicted_probs)[:, i]
         pred_csv_path = os.path.join(output_directory, 'predictions_vs_ground_truth.csv')
         pred_df.to_csv(pred_csv_path, index=False)
         print(f'Predictions and probabilities saved to {pred_csv_path}')
@@ -765,6 +766,7 @@ if __name__ == '__main__':
     parser.add_argument('--grad_clip', type=float, default=None, help='Gradient clipping value (default: None)')
     parser.add_argument('--init', type=str, default='default', choices=['default', 'xavier', 'he'], help='Weight initialization (default, xavier, he)')
     parser.add_argument('--class_weight', type=str, default='none', help='Class weighting: "auto", "none", or comma-separated list (e.g. 1.0,0.5,...)')
+    parser.add_argument('--epoch_patience', type=int, default=2, help='Number of epochs with no improvement to wait before early stopping (default: 2)')
     args = parser.parse_args()
 
     def main_with_args():
@@ -780,6 +782,7 @@ if __name__ == '__main__':
             optimizer_name=args.optimizer,
             grad_clip=args.grad_clip,
             init_type=args.init,
-            class_weight_arg=args.class_weight
+            class_weight_arg=args.class_weight,
+            epoch_patience=args.epoch_patience
         )
     main_with_args()

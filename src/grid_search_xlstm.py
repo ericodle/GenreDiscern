@@ -6,18 +6,19 @@ import sys
 
 # Updated grid for requested sweep
 BATCH_SIZES = [64]
-HIDDEN_SIZES = [48, 64, 128]
-NUM_LAYERS = [1, 2, 3]
+HIDDEN_SIZES = [32]
+NUM_LAYERS = [1]
 DROPOUTS = [0.1]
 OPTIMIZERS = ['adam']
-LRS = [0.001]
+LRS = [0.01]
 INITS = ['xavier']
-CLASS_WEIGHTS = ['none']
+CLASS_WEIGHTS = ['auto']
+EPOCH_PATIENCES = [3, 4, 5]
 
-MFCC_PATH = './output/gtzan_mfcc.json'
+MFCC_PATH = './mfccs/gtzan_mfcc.json'
 MODEL_TYPE = 'xLSTM'
 OUTPUT_BASE = './output/gridsearch'
-EPOCH_PATIENCE = 1  # For quick runs
+EPOCH_PATIENCE = 2  # For quick runs
 
 os.makedirs(OUTPUT_BASE, exist_ok=True)
 
@@ -34,6 +35,7 @@ def config_to_dirname(config):
         f"_do{str(config['dropout']).replace('.', 'p')}"
         f"_opt{config['optimizer']}_lr{str(config['initial_lr']).replace('.', 'p')}"
         f"_init{config['init']}_cw{config['class_weight']}"
+        f"_ep{config['epoch_patience']}"
     )
 
 def config_exists(config, existing_results):
@@ -46,7 +48,8 @@ def config_exists(config, existing_results):
            (existing_results['optimizer'] == config['optimizer']) & \
            (existing_results['initial_lr'] == config['initial_lr']) & \
            (existing_results['init'] == config['init']) & \
-           (existing_results['class_weight'] == config['class_weight'])
+           (existing_results['class_weight'] == config['class_weight']) & \
+           (existing_results['epoch_patience'] == config['epoch_patience'])
     return mask.any() and not pd.isnull(existing_results.loc[mask, 'test_accuracy']).all()
 
 def run_one(config, run_number):
@@ -64,6 +67,7 @@ def run_one(config, run_number):
         '--optimizer', config['optimizer'],
         '--init', config['init'],
         '--class_weight', config['class_weight'],
+        '--epoch_patience', str(config['epoch_patience']),
     ]
     print(f'Running: {cmd}')
     try:
@@ -85,7 +89,7 @@ def run_one(config, run_number):
 
 def main():
     grid = list(itertools.product(
-        BATCH_SIZES, HIDDEN_SIZES, NUM_LAYERS, DROPOUTS, OPTIMIZERS, LRS, INITS, CLASS_WEIGHTS
+        BATCH_SIZES, HIDDEN_SIZES, NUM_LAYERS, DROPOUTS, OPTIMIZERS, LRS, INITS, CLASS_WEIGHTS, EPOCH_PATIENCES
     ))
     configs = []
     for vals in grid:
@@ -98,6 +102,7 @@ def main():
             'initial_lr': vals[5],
             'init': vals[6],
             'class_weight': vals[7],
+            'epoch_patience': vals[8],
         })
     print(f'Total runs: {len(configs)}')
     all_results = existing_results.to_dict('records') if not existing_results.empty else []

@@ -1,3 +1,4 @@
 env/
 src/__pycache__
 output/gtzan_mfcc.json
+mfccs/
