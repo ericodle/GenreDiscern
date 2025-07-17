@@ -5,12 +5,12 @@ import os
 import sys
 
 # Updated grid for requested sweep
-BATCH_SIZES = [24]
-HIDDEN_SIZES = [256]
-NUM_LAYERS = [2]
-DROPOUTS = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5]
+BATCH_SIZES = [64]
+HIDDEN_SIZES = [48, 64, 128]
+NUM_LAYERS = [1, 2, 3]
+DROPOUTS = [0.1]
 OPTIMIZERS = ['adam']
-LRS = [0.0001, 0.001, 0.01, 0.1]
+LRS = [0.001]
 INITS = ['xavier']
 CLASS_WEIGHTS = ['none']
 
