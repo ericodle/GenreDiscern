@@ -1,4 +1,16 @@
 ########################################################################
+# CONSTANTS
+########################################################################
+
+# Music genre class names
+MUSIC_GENRES = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
+
+# Model type groupings for evaluation
+ANN_MODELS = ["FC", "CNN"]
+RECURRENT_MODELS = ["LSTM", "GRU"]
+TRANSFORMER_MODELS = ["Tr_FC", "Tr_CNN", "Tr_LSTM", "Tr_GRU"]
+
+########################################################################
 # IMPORT LIBRARIES
 ########################################################################
 
@@ -20,7 +32,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-import models, xlstm
+import models, xlstm, test_models
 
 ########################################################################
 # INTENDED FOR USE WITH CUDA
@@ -54,228 +66,6 @@ def load_data(data_path):
     print("Data succesfully loaded!")
 
     return X, y
-
-def test_ann_model(model, test_dataloader, device='cpu'):
-    '''
-    This function evaluates an artificial neural network (ann) using a test dataloader. 
-    '''
-    model.eval()
-    count = 0
-    correct = 0
-    true = []
-    preds = []
-    probs = []
-
-    model = model.to(device)
-
-    with torch.no_grad():
-        for X_testbatch, y_testbatch in test_dataloader:
-            X_testbatch = X_testbatch.unsqueeze(1).to(device)
-            y_testbatch = y_testbatch.to(device)
-
-            y_val = model(X_testbatch)
-            y_probs = torch.softmax(y_val, dim=-1)
-            predicted = torch.max(y_val, 1)[1]
-
-            count += y_testbatch.size(dim=0)
-            correct += (predicted == y_testbatch).sum()
-
-            true.append(y_testbatch.cpu())
-            preds.append(predicted.cpu().detach())
-            probs.append(y_probs.cpu().detach())
-
-    ground_truth = torch.cat(true)
-    predicted_genres = torch.cat(preds)
-    predicted_probs = torch.cat(probs)
-    accuracy = correct / count
-
-    return ground_truth, predicted_genres, predicted_probs, accuracy
-
-def test_recurrent_model(model, test_dataloader, device='cpu'):
-    '''
-    This function evaluates a recurrent neural network (rnn) using a test dataloader. 
-    '''
-    model.eval()
-    count = 0
-    correct = 0
-    true = []
-    preds = []
-    probs = []
-
-    model = model.to(device)
-
-    with torch.no_grad():
-        for X_testbatch, y_testbatch in test_dataloader:
-            X_testbatch = X_testbatch.to(device)
-            y_testbatch = y_testbatch.to(device)
-
-            h0 = torch.zeros(model.layer_dim, X_testbatch.size(0), model.hidden_dim).to(device)
-            c0 = torch.zeros(model.layer_dim, X_testbatch.size(0), model.hidden_dim).to(device)
-
-            y_val = model(X_testbatch)
-            y_probs = torch.softmax(y_val, dim=-1)
-            predicted = torch.max(y_val, 1)[1]
-
-            count += y_testbatch.size(dim=0)
-            correct += (predicted == y_testbatch).sum()
-
-            true.append(y_testbatch.cpu())
-            preds.append(predicted.cpu().detach())
-            probs.append(y_probs.cpu().detach())
-
-    ground_truth = torch.cat(true)
-    predicted_genres = torch.cat(preds)
-    predicted_probs = torch.cat(probs)
-    accuracy = correct / count
-
-    return ground_truth, predicted_genres, predicted_probs, accuracy
-
-def test_xlstm_model(model, test_dataloader, device='cpu'):
-    """
-    Evaluate an xLSTM model using a test dataloader.
-    Handles state initialization specific to the xLSTM class.
-    """
-    model.eval()
-    model = model.to(device)
-
-    true = []
-    preds = []
-    probs = []
-    correct = 0
-    total = 0
-
-    with torch.no_grad():
-        for X_batch, y_batch in test_dataloader:
-            X_batch = X_batch.to(device)
-            y_batch = y_batch.to(device)
-            batch_size = X_batch.size(0)
-
-            # Forward pass - SimpleXLSTMClassifier handles state internally
-            outputs = model(X_batch)
-
-            y_probs = torch.softmax(outputs, dim=-1)
-            y_pred = torch.argmax(outputs, dim=-1)
-
-            correct += (y_pred == y_batch).sum().item()
-            total += batch_size
-
-            true.append(y_batch.cpu())
-            preds.append(y_pred.cpu())
-            probs.append(y_probs.cpu())
-
-    ground_truth = torch.cat(true)
-    predicted_genres = torch.cat(preds)
-    predicted_probs = torch.cat(probs)
-    accuracy = correct / total
-
-    return ground_truth, predicted_genres, predicted_probs, accuracy
-
-
-def test_transformer_model(model, test_dataloader, device='cpu'):
-    '''
-    This function evaluates a transformer network using a test dataloader. 
-    '''
-    model.eval()
-    count = 0
-    correct = 0
-    true = []
-    preds = []
-    probs = []
-
-    for X_testbatch, y_testbatch in test_dataloader:
-        X_testbatch = X_testbatch.to(device)
-        y_testbatch = y_testbatch.to(device)
-
-        X_testbatch = X_testbatch.permute(0, 1, 2)
-
-        model = model.to(device)
-
-        y_val = model(X_testbatch)
-
-        y_probs = torch.softmax(y_val, dim=-1)
-        predicted = torch.max(y_val, 1)[1]
-
-        count += y_testbatch.size(0)
-        correct += (predicted == y_testbatch).sum().item()
-
-        true.append(y_testbatch.detach().cpu())
-        preds.append(predicted.detach().cpu())
-        probs.append(y_probs.detach().cpu())
-
-    ground_truth = torch.cat(true)
-    predicted_genres = torch.cat(preds)
-    predicted_probs = torch.cat(probs)
-    accuracy = correct / count
-
-    return ground_truth, predicted_genres, predicted_probs, accuracy
-
-def calculate_roc_auc(y_true, y_probs):
-    '''
-    Calculates class-wise ROC AUC scores. 
-    '''
-    roc_auc_scores = []
-    for class_idx in range(y_probs.shape[1]):
-        roc_auc = roc_auc_score(y_true == class_idx, y_probs[:, class_idx])
-        roc_auc_scores.append(roc_auc)
-    return roc_auc_scores
-
-def plot_roc_curve(y_true, y_probs, class_names, output_directory):
-    '''
-    Plots class-wise ROC AUC scores. 
-    '''
-    auc_file = os.path.join(output_directory, 'auc.txt')
-    with open(auc_file, 'w') as f:
-        for class_idx in range(y_probs.shape[1]):
-            fpr, tpr, _ = roc_curve(y_true == class_idx, y_probs[:, class_idx])
-            roc_auc = auc(fpr, tpr)
-            f.write(f'{class_names[class_idx]}: {roc_auc:.2f}\n')
-    
-    plt.figure(figsize=(8, 6))
-    for class_idx in range(y_probs.shape[1]):
-        fpr, tpr, _ = roc_curve(y_true == class_idx, y_probs[:, class_idx])
-        roc_auc = auc(fpr, tpr)
-        plt.plot(fpr, tpr, label=f'{class_names[class_idx]} (AUC = {roc_auc:.2f})')
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curves')
-    plt.legend(loc='lower right')  # Adjust legend position
-    output_file = os.path.join(output_directory, 'ROC.png')
-    plt.savefig(output_file)
-    plt.close()
-
-def save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory):
-    '''
-    Saves image of confusion matrix. 
-    '''
-    # Compute confusion matrix
-    arr = confusion_matrix(ground_truth.view(-1).detach().cpu().numpy(), predicted_genres.view(-1).detach().cpu().numpy())
-    
-    # Compute classification report
-    report = classification_report(ground_truth.view(-1).detach().cpu().numpy(), predicted_genres.view(-1).detach().cpu().numpy(),
-                                   target_names=class_names, output_dict=True)
-
-    # Convert report to DataFrame
-    df_report = pd.DataFrame(report).transpose()
-
-    # Save confusion matrix to image
-    df_cm = pd.DataFrame(arr, class_names, class_names)
-    plt.figure(figsize=(10, 7))
-    sns.heatmap(df_cm, annot=True, fmt="d", cmap='BuGn')
-    plt.xlabel("Predictions")
-    plt.ylabel("Ground Truths")
-    plt.title('Confusion Matrix', fontsize=15)
-    output_file = os.path.join(output_directory, 'confusion_matrix.png')
-    plt.savefig(output_file)
-    plt.close()
-
-    # Save accuracy metrics to text file
-    metrics_file = os.path.join(output_directory, 'confusion_metrics.txt')
-    with open(metrics_file, 'w') as f:
-        f.write("Classification Report:\n")
-        f.write(df_report.to_string())
-
-    print("Confusion matrix and accuracy metrics saved successfully.")
-
 
 def train_val_split(X, y, val_ratio):
     '''
@@ -698,64 +488,83 @@ def train_with_memory_optimization(model, train_dataloader, val_dataloader, crit
     
     return train_loss, val_loss, train_acc, val_acc
 
-########################################################################
-# MAIN
-########################################################################
+def evaluate_model(model, model_type, test_dataloader, output_directory, device):
+    """
+    Unified function to evaluate any trained model and generate all outputs.
+    This eliminates the massive code duplication in the original implementation.
+    """
+    print(f"Evaluating {model_type} model...")
+    
+    # Use the unified testing function from test_models
+    ground_truth, predicted_genres, predicted_probs, accuracy = test_models.test_model_unified(
+        model, model_type, test_dataloader, device
+    )
+    
+    # Print test accuracy
+    print(f'Test accuracy: {accuracy * 100:.2f}%')
+    
+    # Generate all outputs using constants
+    test_models.save_ann_confusion_matrix(ground_truth, predicted_genres, MUSIC_GENRES, output_directory)
+    
+    # Calculate and print ROC AUC scores
+    roc_auc_scores = test_models.calculate_roc_auc(ground_truth, predicted_probs)
+    for class_idx, score in enumerate(roc_auc_scores):
+        print(f'Class {class_idx} ROC AUC: {score:.4f}')
+    
+    # Plot ROC curves
+    test_models.plot_roc_curve(ground_truth, predicted_probs, MUSIC_GENRES, output_directory)
+    
+    print(f"{model_type} model evaluation completed successfully!")
+    return accuracy
 
-def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=32):
-    '''
-    Main function for training and evaluating multiple deep learning models (Fully Connected, CNN, LSTM, xLSTM, GRU, and Transformer) for music genre classification using Mel Frequency Cepstral Coefficients (MFCCs). 
-    This function employs PyTorch for model training and evaluation, utilizes cyclic learning rates for optimization, and includes functionalities for plotting learning metrics, testing model accuracy, generating confusion matrices, and computing ROC AUC scores. 
-    The training loop incorporates early stopping based on validation accuracy to prevent overfitting and improve model generalization.
-    '''
-    # load data
+def prepare_data(mfcc_path, batch_size):
+    """
+    Load and prepare data for training.
+    This function handles all data loading, preprocessing, and dataset creation.
+    """
+    # Load data
     X, y = load_data(mfcc_path)
-
+    
     # Add diagnostic prints to check data dimensions
     print("Loaded data dimensions:")
     print("X shape:", X.shape)
     print("y shape:", y.shape)
-
-    # create train/val split
+    
+    # Create train/val split
     X_train, X_val, y_train, y_val = train_val_split(X, y, 0.2)
-
+    
+    # Convert to tensors
     tensor_X_train = torch.Tensor(X_train)
     tensor_X_val = torch.Tensor(X_val)
-    # Convert target labels to long tensors for CrossEntropyLoss
     tensor_y_train = torch.LongTensor(y_train.astype(int))
     tensor_y_val = torch.LongTensor(y_val.astype(int))
-
+    
     tensor_X_test = torch.Tensor(X)
     tensor_y_test = torch.LongTensor(y.astype(int))
-
+    
+    # Create datasets
     train_dataset = TensorDataset(tensor_X_train, tensor_y_train)
     val_dataset = TensorDataset(tensor_X_val, tensor_y_val)
     test_dataset = TensorDataset(tensor_X_test, tensor_y_test)
-
-    # Use the batch_size parameter passed from GUI
+    
+    # Create dataloaders
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+    
+    # Print data info
     print(f"Using batch size: {batch_size}")
     print(f"Data types - X_train: {tensor_X_train.dtype}, y_train: {tensor_y_train.dtype}")
     print(f"Data types - X_val: {tensor_X_val.dtype}, y_val: {tensor_y_val.dtype}")
     print(f"Label values range: {tensor_y_train.min().item()} to {tensor_y_train.max().item()}")
     
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+    return train_dataloader, val_dataloader, test_dataloader
 
-    train_loss = [] 
-    val_loss = []   
-    train_acc = []
-    val_acc = []
-
-    # Training hyperparameters
-    initial_lr = float(initial_lr)
-    n_epochs = 100000000
-    iterations_per_epoch = len(train_dataloader)
-    best_acc = 0
-    patience, trials = 20, 0
-
-    # Initialize model based on model_type
-
+def create_model(model_type, device):
+    """
+    Create and return a model based on the model type.
+    This eliminates the repetition in model initialization.
+    """
     if model_type == 'FC':
         model = models.FC_model()
     elif model_type == 'CNN':
@@ -785,9 +594,37 @@ def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=32):
     elif model_type == "Tr_GRU":
         model = models.Tr_GRU(input_dim=13, hidden_dim=256, num_layers=4, num_heads=1, ff_dim=4, dropout=0.2, output_dim=10)
     else:
-        raise ValueError("Invalid model_type")
- 
-    model = model.to(device)
+        raise ValueError(f"Invalid model_type: {model_type}")
+    
+    return model.to(device)
+
+########################################################################
+# MAIN
+########################################################################
+
+def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=32):
+    '''
+    Main function for training and evaluating multiple deep learning models (Fully Connected, CNN, LSTM, xLSTM, GRU, and Transformer) for music genre classification using Mel Frequency Cepstral Coefficients (MFCCs). 
+    This function employs PyTorch for model training and evaluation, utilizes cyclic learning rates for optimization, and includes functionalities for plotting learning metrics, testing model accuracy, generating confusion matrices, and computing ROC AUC scores. 
+    The training loop incorporates early stopping based on validation accuracy to prevent overfitting and improve model generalization.
+    '''
+    # Prepare data using the unified function
+    train_dataloader, val_dataloader, test_dataloader = prepare_data(mfcc_path, batch_size)
+
+    train_loss = [] 
+    val_loss = []   
+    train_acc = []
+    val_acc = []
+
+    # Training hyperparameters
+    initial_lr = float(initial_lr)
+    n_epochs = 100000000
+    iterations_per_epoch = len(train_dataloader)
+    best_acc = 0
+    patience, trials = 20, 0
+
+    # Initialize model using the unified function
+    model = create_model(model_type, device)
     
     # Memory optimization: Clear cache before training
     if torch.cuda.is_available():
@@ -809,43 +646,10 @@ def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=32):
     print(f'Training {model_type} model with learning rate of {initial_lr}.')
 
     try:
-        if model_type == "FC":
-            # Use memory-efficient training for all models
-            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
-                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
-            )
-        elif model_type == "CNN":
-            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
-                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
-            )
-        elif model_type == "LSTM":
-            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
-                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
-            )
-        elif model_type == "xLSTM":
-            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
-                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
-            )
-        elif model_type == "GRU":
-            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
-                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
-            )
-        elif model_type == "Tr_FC":
-            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
-                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
-            )
-        elif model_type == "Tr_CNN":
-            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
-                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
-            )
-        elif model_type == "Tr_LSTM":
-            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
-                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
-            )
-        elif model_type == "Tr_GRU":
-            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
-                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
-            )
+        # Use memory-efficient training for all models
+        train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
+            model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
+        )
         
         print("Training completed successfully!")
         
@@ -853,6 +657,9 @@ def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=32):
         if train_loss and val_loss:
             plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
             print("Training plots saved!")
+        
+        # Evaluate the trained model using the unified function
+        evaluate_model(model, model_type, test_dataloader, output_directory, device)
         
     except RuntimeError as e:
         error_msg = str(e).lower()
@@ -877,221 +684,6 @@ def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=32):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         return
-
-    #Evaluate trained model
-
-    if model_type == "FC":
-        plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
-        print("Learning metrics plotted!")
-
-        # Test the model
-        ground_truth, predicted_genres, predicted_probs, accuracy = test_ann_model(model, test_dataloader)
-
-        # Print test accuracy
-        print(f'Test accuracy: {accuracy * 100:.2f}%')
-
-        # Plot confusion matrix
-        class_names = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
-        save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory)
-
-        # Calculate ROC AUC scores
-        roc_auc_scores = calculate_roc_auc(ground_truth, predicted_probs)
-
-        # Print ROC AUC scores
-        for class_idx, score in enumerate(roc_auc_scores):
-            print(f'Class {class_idx} ROC AUC: {score:.4f}')
-
-        # Plot ROC curves
-        plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
-
-    if model_type == "CNN":
-        plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
-        print("Learning metrics plotted!")
-
-        # Test the model
-        ground_truth, predicted_genres, predicted_probs, accuracy = test_ann_model(model, test_dataloader)
-
-        # Print test accuracy
-        print(f'Test accuracy: {accuracy * 100:.2f}%')
-
-        # Plot confusion matrix
-        class_names = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
-        save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory)
-
-        # Calculate ROC AUC scores
-        roc_auc_scores = calculate_roc_auc(ground_truth, predicted_probs)
-
-        # Print ROC AUC scores
-        for class_idx, score in enumerate(roc_auc_scores):
-            print(f'Class {class_idx} ROC AUC: {score:.4f}')
-
-        # Plot ROC curves
-        plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
-
-    if model_type == "LSTM":
-        plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
-        print("Learning metrics plotted!")
-
-        # Test the model
-        ground_truth, predicted_genres, predicted_probs, accuracy = test_recurrent_model(model, test_dataloader, device=device)
-
-        # Print test accuracy
-        print(f'Test accuracy: {accuracy * 100:.2f}%')
-
-        # Plot confusion matrix
-        class_names = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
-        save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory)
-
-        # Calculate ROC AUC scores
-        roc_auc_scores = calculate_roc_auc(ground_truth, predicted_probs)
-
-        # Print ROC AUC scores
-        for class_idx, score in enumerate(roc_auc_scores):
-            print(f'Class {class_idx} ROC AUC: {score:.4f}')
-
-        # Plot ROC curves
-        plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
-
-    if model_type == "xLSTM":
-        plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
-        print("Learning metrics plotted!")
-
-        # Test the xLSTM model
-        ground_truth, predicted_genres, predicted_probs, accuracy = test_xlstm_model(
-            model, test_dataloader, device=device
-        )
-
-        print(f'Test accuracy: {accuracy * 100:.2f}%')
-
-        class_names = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
-        save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory)
-
-        roc_auc_scores = calculate_roc_auc(ground_truth, predicted_probs)
-        for class_idx, score in enumerate(roc_auc_scores):
-            print(f'Class {class_idx} ROC AUC: {score:.4f}')
-
-        plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
-
-
-    if model_type == "GRU":
-        plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
-        print("Learning metrics plotted!")
-
-        # Test the model
-        ground_truth, predicted_genres, predicted_probs, accuracy = test_recurrent_model(model, test_dataloader, device=device)
-
-        # Print test accuracy
-        print(f'Test accuracy: {accuracy * 100:.2f}%')
-
-        # Plot confusion matrix
-        class_names = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
-        save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory)
-
-        # Calculate ROC AUC scores
-        roc_auc_scores = calculate_roc_auc(ground_truth, predicted_probs)
-
-        # Print ROC AUC scores
-        for class_idx, score in enumerate(roc_auc_scores):
-            print(f'Class {class_idx} ROC AUC: {score:.4f}')
-
-        # Plot ROC curves
-        plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
-
-    if model_type == "Tr_FC":
-        plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
-        print("Learning metrics plotted!")
-
-        # Test the model
-        ground_truth, predicted_genres, predicted_probs, accuracy = test_transformer_model(model, test_dataloader)
-
-        # Print test accuracy
-        print(f'Test accuracy: {accuracy * 100:.2f}%')
-
-        # Plot confusion matrix
-        class_names = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
-        save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory)
-
-        # Calculate ROC AUC scores
-        roc_auc_scores = calculate_roc_auc(ground_truth, predicted_probs)
-
-        # Print ROC AUC scores
-        for class_idx, score in enumerate(roc_auc_scores):
-            print(f'Class {class_idx} ROC AUC: {score:.4f}')
-
-        # Plot ROC curves
-        plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
-
-    if model_type == "Tr_CNN":
-        plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
-        print("Learning metrics plotted!")
-
-        # Test the model
-        ground_truth, predicted_genres, predicted_probs, accuracy = test_transformer_model(model, test_dataloader)
-
-        # Print test accuracy
-        print(f'Test accuracy: {accuracy * 100:.2f}%')
-
-        # Plot confusion matrix
-        class_names = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
-        save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory)
-
-        # Calculate ROC AUC scores
-        roc_auc_scores = calculate_roc_auc(ground_truth, predicted_probs)
-
-        # Print ROC AUC scores
-        for class_idx, score in enumerate(roc_auc_scores):
-            print(f'Class {class_idx} ROC AUC: {score:.4f}')
-
-        # Plot ROC curves
-        plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
-
-    if model_type == "Tr_LSTM":
-        plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
-        print("Learning metrics plotted!")
-
-        # Test the model
-        ground_truth, predicted_genres, predicted_probs, accuracy = test_transformer_model(model, test_dataloader, device=device)
-
-        # Print test accuracy
-        print(f'Test accuracy: {accuracy * 100:.2f}%')
-
-        # Plot confusion matrix
-        class_names = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
-        save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory)
-
-        # Calculate ROC AUC scores
-        roc_auc_scores = calculate_roc_auc(ground_truth, predicted_probs)
-
-        # Print ROC AUC scores
-        for class_idx, score in enumerate(roc_auc_scores):
-            print(f'Class {class_idx} ROC AUC: {score:.4f}')
-
-        # Plot ROC curves
-        plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
-
-    if model_type == "Tr_GRU":
-        plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
-        print("Learning metrics plotted!")
-
-        # Test the model
-        ground_truth, predicted_genres, predicted_probs, accuracy = test_transformer_model(model, test_dataloader, device=device)
-
-        # Print test accuracy
-        print(f'Test accuracy: {accuracy * 100:.2f}%')
-
-        # Plot confusion matrix
-        class_names = ['pop', 'classical', 'jazz', 'hiphop', 'reggae', 'disco', 'metal', 'country', 'blues', 'rock']
-        save_ann_confusion_matrix(ground_truth, predicted_genres, class_names, output_directory)
-
-        # Calculate ROC AUC scores
-        roc_auc_scores = calculate_roc_auc(ground_truth, predicted_probs)
-
-        # Print ROC AUC scores
-        for class_idx, score in enumerate(roc_auc_scores):
-            print(f'Class {class_idx} ROC AUC: {score:.4f}')
-
-        # Plot ROC curves
-        plot_roc_curve(ground_truth, predicted_probs, class_names, output_directory)
 
 if __name__ == '__main__':
     # Retrieve command-line arguments
