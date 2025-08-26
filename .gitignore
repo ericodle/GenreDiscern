@@ -2,3 +2,16 @@ env/
 src/__pycache__
 output/gtzan_mfcc.json
 mfccs/
+
+# Model files
+best_model.pth
+*.pth
+*.pt
+*.bin
+*.ckpt
+
+# Training outputs
+output/
+training_imgs/
+*.png
+*.txt
