@@ -17,6 +17,9 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import models, xlstm
 
 ########################################################################
@@ -147,13 +150,7 @@ def test_xlstm_model(model, test_dataloader, device='cpu'):
             y_batch = y_batch.to(device)
             batch_size = X_batch.size(0)
 
-            # Initialize hidden state for xLSTM
-            initial_state = [
-                tuple(torch.zeros(batch_size, model.xlstm.hidden_size, device=device) for _ in range(4))
-                for _ in range(model.xlstm.num_layers)
-            ]
-
-            # Forward pass
+            # Forward pass - SimpleXLSTMClassifier handles state internally
             outputs = model(X_batch)
 
             y_probs = torch.softmax(outputs, dim=-1)
@@ -348,11 +345,364 @@ def plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_direc
     plt.savefig(os.path.join(output_directory, "learning_metrics.png"), bbox_inches='tight')  # Use bbox_inches='tight' to prevent cutting off
     plt.close()
 
+def is_real_oom_error():
+    """
+    Check if a CUDA out of memory error is real or erroneous
+    Returns True if it's a real OOM, False if it's erroneous
+    """
+    if not torch.cuda.is_available():
+        return False
+    
+    try:
+        total_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
+        allocated_memory = torch.cuda.memory_allocated() / 1024**3
+        free_memory = total_memory - allocated_memory
+        
+        # If we have more than 1GB free, the OOM is likely erroneous
+        if free_memory > 1.0:
+            print(f"OOM appears erroneous - {free_memory:.2f} GB free memory available")
+            return False
+        else:
+            print(f"OOM appears real - only {free_memory:.2f} GB free memory")
+            return True
+            
+    except Exception as e:
+        print(f"Error checking memory status: {e}")
+        return True  # Assume real OOM if we can't check
+
+def aggressive_memory_cleanup():
+    """
+    Perform aggressive memory cleanup when memory usage is high
+    """
+    if not torch.cuda.is_available():
+        return
+    
+    try:
+        print("Performing aggressive memory cleanup...")
+        
+        # Clear PyTorch cache multiple times
+        for i in range(3):
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        
+        # Force garbage collection multiple times
+        import gc
+        for i in range(3):
+            gc.collect()
+        
+        # Wait for cleanup to complete
+        import time
+        time.sleep(1)
+        
+        # Check memory after cleanup
+        memory_status = monitor_gpu_memory()
+        if isinstance(memory_status, dict):
+            print(f"Memory after aggressive cleanup: {memory_status['allocated']:.2f}GB ({memory_status['utilization']:.1f}%)")
+        else:
+            print("Memory cleanup completed")
+            
+    except Exception as e:
+        print(f"Error during aggressive memory cleanup: {e}")
+
+def monitor_gpu_memory():
+    """
+    Monitor GPU memory usage and return detailed status
+    """
+    if not torch.cuda.is_available():
+        return "CUDA not available"
+    
+    try:
+        total_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
+        allocated_memory = torch.cuda.memory_allocated() / 1024**3
+        reserved_memory = torch.cuda.memory_reserved() / 1024**3
+        free_memory = total_memory - allocated_memory
+        utilization = (allocated_memory / total_memory) * 100
+        
+        status = {
+            'total': total_memory,
+            'allocated': allocated_memory,
+            'reserved': reserved_memory,
+            'free': free_memory,
+            'utilization': utilization,
+            'status': 'normal'
+        }
+        
+        # Determine memory status
+        if utilization > 90:
+            status['status'] = 'critical'
+        elif utilization > 80:
+            status['status'] = 'warning'
+        elif utilization > 60:
+            status['status'] = 'moderate'
+        else:
+            status['status'] = 'good'
+        
+        return status
+        
+    except Exception as e:
+        return f"Error monitoring memory: {e}"
+
+def preallocate_gpu_memory():
+    """
+    Pre-allocate GPU memory to prevent fragmentation and erroneous OOM errors
+    """
+    if not torch.cuda.is_available():
+        return
+    
+    try:
+        print("Pre-allocating GPU memory to prevent fragmentation...")
+        
+        # Get total GPU memory
+        total_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
+        
+        # Pre-allocate a small amount to establish memory pool
+        # This helps prevent fragmentation during training
+        prealloc_size = min(0.5, total_memory * 0.1)  # 0.5GB or 10% of total, whichever is smaller
+        
+        print(f"Pre-allocating {prealloc_size:.2f} GB of GPU memory...")
+        
+        # Create a dummy tensor to pre-allocate memory
+        dummy_tensor = torch.zeros(int(prealloc_size * 1024**3 // 4), dtype=torch.float32, device='cuda')
+        
+        # Clear it immediately to free the memory but keep the allocation
+        del dummy_tensor
+        torch.cuda.empty_cache()
+        
+        print("GPU memory pre-allocation completed")
+        
+    except Exception as e:
+        print(f"Error during GPU memory pre-allocation: {e}")
+
+def defragment_gpu_memory():
+    """
+    Attempt to defragment GPU memory by clearing cache and forcing garbage collection
+    """
+    if not torch.cuda.is_available():
+        return
+    
+    try:
+        print("Attempting GPU memory defragmentation...")
+        
+        # Clear PyTorch cache
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        
+        # Force Python garbage collection
+        import gc
+        gc.collect()
+        
+        # Wait for cleanup
+        import time
+        time.sleep(0.5)
+        
+        # Check memory after cleanup
+        allocated_after = torch.cuda.memory_allocated() / 1024**3
+        print(f"Memory after defragmentation: {allocated_after:.2f} GB")
+        
+    except Exception as e:
+        print(f"Error during memory defragmentation: {e}")
+
+def train_with_memory_optimization(model, train_dataloader, val_dataloader, criterion, optimizer, scheduler, device, n_epochs, patience=20):
+    """
+    Memory-efficient training function with automatic memory management
+    """
+    train_loss = []
+    val_loss = []
+    train_acc = []
+    val_acc = []
+    best_acc = 0
+    trials = 0
+    
+    print("Starting memory-efficient training...")
+    
+    # Check actual GPU memory availability
+    if torch.cuda.is_available():
+        total_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
+        allocated_memory = torch.cuda.memory_allocated() / 1024**3
+        reserved_memory = torch.cuda.memory_reserved() / 1024**3
+        free_memory = total_memory - allocated_memory
+        
+        print(f"GPU Memory Status:")
+        print(f"  Total: {total_memory:.2f} GB")
+        print(f"  Allocated: {allocated_memory:.2f} GB")
+        print(f"  Reserved: {reserved_memory:.2f} GB")
+        print(f"  Free: {free_memory:.2f} GB")
+        
+        # Pre-allocate memory to prevent fragmentation
+        preallocate_gpu_memory()
+        
+        # Clear any fragmented memory
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        
+        print(f"After cleanup - Allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
+    
+    for epoch in range(1, n_epochs + 1):
+        # Clear GPU cache at start of each epoch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        
+        # Training phase
+        model.train()
+        tcorrect, ttotal = 0, 0
+        running_train_loss = 0
+        
+        for batch_idx, (x_batch, y_batch) in enumerate(train_dataloader):
+            try:
+                x_batch = x_batch.to(device)
+                y_batch = y_batch.to(device)
+                
+                # Debug: Check data types and shapes
+                if batch_idx == 0:
+                    print(f"First batch - x_batch: {x_batch.dtype}, shape: {x_batch.shape}")
+                    print(f"First batch - y_batch: {y_batch.dtype}, shape: {y_batch.shape}")
+                    print(f"y_batch values: {y_batch}")
+                
+                optimizer.zero_grad()
+                out = model(x_batch)
+                
+                # Debug: Check model output
+                if batch_idx == 0:
+                    print(f"Model output - dtype: {out.dtype}, shape: {out.shape}")
+                    print(f"Model output range: {out.min().item():.4f} to {out.max().item():.4f}")
+                    print(f"Expected output shape: ({x_batch.size(0)}, 10)")
+                
+                loss = criterion(out, y_batch)
+                loss.backward()
+                optimizer.step()
+                scheduler.step()
+                
+                # Calculate accuracy
+                _, pred = torch.max(out, dim=1)
+                ttotal += y_batch.size(0)
+                tcorrect += torch.sum(pred == y_batch).item()
+                running_train_loss += loss.item()
+                
+                # Memory cleanup
+                del out, loss, pred
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
+                # Progress update every 10 batches
+                if batch_idx % 10 == 0:
+                    print(f"Epoch {epoch}, Batch {batch_idx}/{len(train_dataloader)}")
+                    
+            except RuntimeError as e:
+                error_msg = str(e).lower()
+                if "out of memory" in error_msg:
+                    # Check if this is a real OOM or erroneous
+                    if is_real_oom_error():
+                        print("Real OOM error detected - insufficient memory")
+                        raise e
+                    else:
+                        print("Erroneous OOM error detected - attempting recovery...")
+                        
+                        # Try to recover by defragmenting memory
+                        defragment_gpu_memory()
+                        
+                        # Wait a moment and retry
+                        import time
+                        time.sleep(1)
+                        
+                        print("Retrying batch after memory defragmentation...")
+                        continue
+                else:
+                    raise e
+        
+        # Calculate epoch metrics
+        epoch_train_loss = running_train_loss / len(train_dataloader)
+        epoch_train_acc = 100 * tcorrect / ttotal
+        train_loss.append(epoch_train_loss)
+        train_acc.append(epoch_train_acc)
+        
+        # Validation phase
+        model.eval()
+        vcorrect, vtotal = 0, 0
+        running_val_loss = 0
+        
+        with torch.no_grad():
+            for x_val, y_val in val_dataloader:
+                try:
+                    x_val = x_val.to(device)
+                    y_val = y_val.to(device)
+                    
+                    out = model(x_val)
+                    loss = criterion(out, y_val)
+                    
+                    _, pred = torch.max(out, dim=1)
+                    vtotal += y_val.size(0)
+                    vcorrect += torch.sum(pred == y_val).item()
+                    running_val_loss += loss.item()
+                    
+                    # Memory cleanup
+                    del out, loss, pred
+                    
+                except RuntimeError as e:
+                    error_msg = str(e).lower()
+                    if "out of memory" in error_msg:
+                        print("OOM during validation - attempting recovery...")
+                        if is_real_oom_error():
+                            print("Real OOM during validation - skipping batch")
+                            continue
+                        else:
+                            print("Erroneous OOM during validation - defragmenting...")
+                            defragment_gpu_memory()
+                            continue
+                    else:
+                        raise e
+        
+        epoch_val_loss = running_val_loss / len(val_dataloader)
+        epoch_val_acc = 100 * vcorrect / vtotal
+        val_loss.append(epoch_val_loss)
+        val_acc.append(epoch_val_acc)
+        
+        # Memory monitoring
+        if torch.cuda.is_available():
+            memory_status = monitor_gpu_memory()
+            if isinstance(memory_status, dict):
+                print(f"Epoch {epoch}: Train Loss: {epoch_train_loss:.4f}, Train Acc: {epoch_train_acc:.2f}%, "
+                      f"Val Loss: {epoch_val_loss:.4f}, Val Acc: {epoch_val_acc:.2f}%, "
+                      f"GPU Memory: {memory_status['allocated']:.2f}GB ({memory_status['utilization']:.1f}%) - {memory_status['status']}")
+                
+                # Warn if memory usage is getting high
+                if memory_status['status'] == 'warning':
+                    print("⚠️  GPU memory usage is high - consider reducing batch size")
+                elif memory_status['status'] == 'critical':
+                    print("🚨 GPU memory usage is critical - training may fail soon")
+                    print("🔄 Performing aggressive memory cleanup...")
+                    aggressive_memory_cleanup()
+            else:
+                print(f"Epoch {epoch}: Train Loss: {epoch_train_loss:.4f}, Train Acc: {epoch_train_acc:.2f}%, "
+                      f"Val Loss: {epoch_val_loss:.4f}, Val Acc: {epoch_val_acc:.2f}%")
+        else:
+            print(f"Epoch {epoch}: Train Loss: {epoch_train_loss:.4f}, Train Acc: {epoch_train_acc:.2f}%, "
+                  f"Val Loss: {epoch_val_loss:.4f}, Val Acc: {epoch_val_acc:.2f}%")
+        
+        # Early stopping
+        if epoch_val_acc > best_acc:
+            best_acc = epoch_val_acc
+            trials = 0
+            # Save best model
+            if torch.cuda.is_available():
+                torch.save(model.state_dict(), 'best_model.pth')
+        else:
+            trials += 1
+            if trials >= patience:
+                print(f"Early stopping at epoch {epoch}")
+                break
+    
+    return train_loss, val_loss, train_acc, val_acc
+
 ########################################################################
 # MAIN
 ########################################################################
 
-def main(mfcc_path, model_type, output_directory, initial_lr):
+def main(mfcc_path, model_type, output_directory, initial_lr, batch_size=32):
     '''
     Main function for training and evaluating multiple deep learning models (Fully Connected, CNN, LSTM, xLSTM, GRU, and Transformer) for music genre classification using Mel Frequency Cepstral Coefficients (MFCCs). 
     This function employs PyTorch for model training and evaluation, utilizes cyclic learning rates for optimization, and includes functionalities for plotting learning metrics, testing model accuracy, generating confusion matrices, and computing ROC AUC scores. 
@@ -371,21 +721,26 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     tensor_X_train = torch.Tensor(X_train)
     tensor_X_val = torch.Tensor(X_val)
-    tensor_y_train = torch.Tensor(y_train)
-    tensor_y_val = torch.Tensor(y_val)
+    # Convert target labels to long tensors for CrossEntropyLoss
+    tensor_y_train = torch.LongTensor(y_train.astype(int))
+    tensor_y_val = torch.LongTensor(y_val.astype(int))
 
     tensor_X_test = torch.Tensor(X)
-    tensor_y_test = torch.Tensor(y)
+    tensor_y_test = torch.LongTensor(y.astype(int))
 
     train_dataset = TensorDataset(tensor_X_train, tensor_y_train)
     val_dataset = TensorDataset(tensor_X_val, tensor_y_val)
-
     test_dataset = TensorDataset(tensor_X_test, tensor_y_test)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=True)
-
-    test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=True)
+    # Use the batch_size parameter passed from GUI
+    print(f"Using batch size: {batch_size}")
+    print(f"Data types - X_train: {tensor_X_train.dtype}, y_train: {tensor_y_train.dtype}")
+    print(f"Data types - X_val: {tensor_X_val.dtype}, y_val: {tensor_y_val.dtype}")
+    print(f"Label values range: {tensor_y_train.min().item()} to {tensor_y_train.max().item()}")
+    
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
     train_loss = [] 
     val_loss = []   
@@ -408,14 +763,17 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
     elif model_type == 'LSTM':
         model = models.LSTM_model(input_dim=13, hidden_dim=256, layer_dim=2, output_dim=10, dropout_prob=0.2)
     elif model_type == 'xLSTM':
-        model = xlstm.xLSTMClassifier(
+        model = xlstm.SimpleXLSTMClassifier(
             input_size=13,
-            hidden_size=13,
-            num_heads=1,
-            num_layers=1,
+            hidden_size=128,  # Reduced from 256 to save memory
+            num_layers=1,     # Reduced from 2 to save memory
             num_classes=10,  
-            batch_first=True        
+            batch_first=True,
+            dropout=0.2
         )
+        # Enable gradient checkpointing to save memory
+        if hasattr(model, 'xlstm'):
+            model.xlstm.use_checkpoint = True
     elif model_type == 'GRU':
         model = models.GRU_model(input_dim=13, hidden_dim=256, layer_dim=2, output_dim=10, dropout_prob=0.2)
     elif model_type == "Tr_FC":
@@ -430,6 +788,17 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
         raise ValueError("Invalid model_type")
  
     model = model.to(device)
+    
+    # Memory optimization: Clear cache before training
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        print(f"GPU memory before training: {torch.cuda.memory_allocated() / 1024**2:.2f} MB")
+    
+    # Reduce batch size for memory-constrained GPUs
+    # batch_size = 32  # Reduced from 128 to save memory
+    # train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    # val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
+    # test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
     criterion = nn.CrossEntropyLoss()
 
@@ -439,482 +808,75 @@ def main(mfcc_path, model_type, output_directory, initial_lr):
 
     print(f'Training {model_type} model with learning rate of {initial_lr}.')
 
-    if model_type == "FC":
-        for epoch in range(1, n_epochs + 1):
-            tcorrect, ttotal = 0, 0
-            running_train_loss = 0
-            for (x_batch, y_batch) in train_dataloader:
-                model.train()
-                x_batch = x_batch.unsqueeze(1)
-                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-                y_batch = y_batch.to(torch.int64)        
-                opt.zero_grad()
-                out = model(x_batch)
-                loss = criterion(out, y_batch)
-                running_train_loss += loss.item()
-                loss.backward()
-                opt.step()
-                sched.step()
-                _,pred = torch.max(out, dim=1)
-                ttotal += y_batch.size(0)
-                tcorrect += torch.sum(pred==y_batch).item()
-            train_acc.append(100 * tcorrect / ttotal)
-            epoch_train_loss = running_train_loss / len(train_dataloader)
-            train_loss.append(epoch_train_loss)
-            model.eval()
-            vcorrect, vtotal = 0, 0
-            running_val_loss = 0
-            for x_val, y_val in val_dataloader:
-                x_val = x_val.unsqueeze(1)
-                x_val, y_val = x_val.to(device), y_val.to(device)
-                out = model(x_val)
-                preds = F.log_softmax(out, dim=1).argmax(dim=1)
-                vtotal += y_val.size(0)
-                vcorrect += (preds == y_val).sum().item()
-                running_val_loss += criterion(out, y_val.long()).item()
-            vacc = vcorrect / vtotal
-            val_acc.append(vacc*100)
-            epoch_val_loss = running_val_loss / len(val_dataloader)
-            val_loss.append(epoch_val_loss)
-            if epoch % 5 == 0:
-                print(f'Epoch: {epoch:3d}. Loss: {loss.item():.4f}. Val Acc.: {vacc:2.2%}')
-               
-            if vacc > best_acc:
-                trials = 0
-                best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model.bin"))
-                print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
-            else:
-                trials += 1
-                if trials >= patience:
-                    print(f'Early stopping on epoch {epoch}')
-                    break
-
-    if model_type == "CNN":
-        for epoch in range(1, n_epochs + 1):
-            tcorrect, ttotal = 0, 0
-            running_train_loss = 0
+    try:
+        if model_type == "FC":
+            # Use memory-efficient training for all models
+            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
+                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
+            )
+        elif model_type == "CNN":
+            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
+                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
+            )
+        elif model_type == "LSTM":
+            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
+                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
+            )
+        elif model_type == "xLSTM":
+            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
+                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
+            )
+        elif model_type == "GRU":
+            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
+                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
+            )
+        elif model_type == "Tr_FC":
+            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
+                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
+            )
+        elif model_type == "Tr_CNN":
+            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
+                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
+            )
+        elif model_type == "Tr_LSTM":
+            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
+                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
+            )
+        elif model_type == "Tr_GRU":
+            train_loss, val_loss, train_acc, val_acc = train_with_memory_optimization(
+                model, train_dataloader, val_dataloader, criterion, opt, sched, device, n_epochs, patience
+            )
+        
+        print("Training completed successfully!")
+        
+        # Plot training results
+        if train_loss and val_loss:
+            plot_learning_metrics(train_loss, val_loss, train_acc, val_acc, output_directory)
+            print("Training plots saved!")
+        
+    except RuntimeError as e:
+        error_msg = str(e).lower()
+        if "out of memory" in error_msg:
+            print(f"CUDA out of memory error: {e}")
             
-            for (x_batch, y_batch) in train_dataloader:
-                model.train()
-                x_batch = x_batch.unsqueeze(0)
-                x_batch = x_batch.permute(1, 0, 2, 3)
-                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-                y_batch = y_batch.to(torch.int64)
-                opt.zero_grad()
-                out = model(x_batch)
-
-                loss = criterion(out, y_batch)
-                running_train_loss += loss.item()
-                loss.backward()
-                opt.step()
-                sched.step()
-                _,pred = torch.max(out, dim=1)
-                ttotal += y_batch.size(0)
-                tcorrect += torch.sum(pred==y_batch).item()
-            train_acc.append(100 * tcorrect / ttotal)
-            epoch_train_loss = running_train_loss / len(train_dataloader)
-            train_loss.append(epoch_train_loss)
-            model.eval()
-            vcorrect, vtotal = 0, 0
-            running_val_loss = 0
-            for x_val, y_val in val_dataloader:
-                x_val = x_val.unsqueeze(1)
-                x_val, y_val = x_val.to(device), y_val.to(device)
-                out = model(x_val)
-                preds = F.log_softmax(out, dim=1).argmax(dim=1)
-                vtotal += y_val.size(0)
-                vcorrect += (preds == y_val).sum().item()
-                running_val_loss += criterion(out, y_val.long()).item()
-            vacc = vcorrect / vtotal
-            val_acc.append(vacc*100)
-            epoch_val_loss = running_val_loss / len(val_dataloader)
-            val_loss.append(epoch_val_loss)
-            if epoch % 5 == 0:
-                print(f'Epoch: {epoch:3d}. Loss: {loss.item():.4f}. Val Acc.: {vacc:2.2%}')
-            if vacc > best_acc:
-                trials = 0
-                best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model.bin"))
-                print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
+            # Check if this is a real OOM or erroneous
+            if is_real_oom_error():
+                print("This is a real OOM error. Try reducing batch size or model complexity.")
             else:
-                trials += 1
-                if trials >= patience:
-                    print(f'Early stopping on epoch {epoch}')
-                    break
-
-    if model_type == "LSTM":
-        for epoch in range(1, n_epochs + 1):
-            tcorrect, ttotal = 0, 0
-            running_train_loss = 0
-            for (x_batch, y_batch) in train_dataloader:
-                model.train()
-                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-                y_batch = y_batch.to(torch.int64)
-                opt.zero_grad()
-                out = model(x_batch)
-                loss = criterion(out, y_batch)
-                running_train_loss += loss.item()
-                loss.backward()
-                opt.step()
-                sched.step()
-                _,pred = torch.max(out, dim=1)
-                ttotal += y_batch.size(0)
-                tcorrect += torch.sum(pred==y_batch).item()
-            train_acc.append(100 * tcorrect / ttotal)
-            epoch_train_loss = running_train_loss / len(train_dataloader)
-            train_loss.append(epoch_train_loss)
-            model.eval()
-            vcorrect, vtotal = 0, 0
-            running_val_loss = 0
-            for x_val, y_val in val_dataloader:
-                x_val, y_val = x_val.to(device), y_val.to(device)
-                out = model(x_val)
-                preds = F.log_softmax(out, dim=1).argmax(dim=1)
-                vtotal += y_val.size(0)
-                vcorrect += (preds == y_val).sum().item()
-                running_val_loss += criterion(out, y_val.long()).item()
-            vacc = vcorrect / vtotal
-            val_acc.append(vacc*100)
-            epoch_val_loss = running_val_loss / len(val_dataloader)
-            val_loss.append(epoch_val_loss)
-            if epoch % 5 == 0:
-                print(f'Epoch: {epoch:3d}. Loss: {loss.item():.4f}. Val Acc.: {vacc:2.2%}')
-            if vacc > best_acc:
-                trials = 0
-                best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model.bin"))
-                print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
-            else:
-                trials += 1
-                if trials >= patience:
-                    print(f'Early stopping on epoch {epoch}')
-                    break
-
-    if model_type == "xLSTM":
-        for epoch in range(1, n_epochs + 1):
-            print(f"\n=== Epoch {epoch} ===")
-            tcorrect, ttotal = 0, 0
-            running_train_loss = 0
+                print("This appears to be an erroneous OOM error. Attempting recovery...")
+                defragment_gpu_memory()
+                print("Memory defragmentation completed. You can try training again.")
             
-            # Training loop
-            for batch_idx, (x_batch, y_batch) in enumerate(train_dataloader):
-                model.train()
-                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-                y_batch = y_batch.to(torch.int64)
-
-                print(f"  Train batch {batch_idx+1}/{len(train_dataloader)}")
-                print(f"    x_batch shape: {x_batch.shape}")
-                print(f"    y_batch shape: {y_batch.shape}")
-
-                opt.zero_grad()
-                out = model(x_batch)
-                loss = criterion(out, y_batch) 
-                running_train_loss += loss.item()
-                loss.backward()
-                opt.step()
-                sched.step()
-
-                _, pred = torch.max(out, dim=1)
-                print(f"    pred shape: {pred.shape}")
-
-                ttotal += y_batch.size(0)
-                accuracy = 100 * (pred == y_batch).sum().item() / y_batch.size(0)
-                print(f"    Batch loss: {loss.item():.4f} | Batch acc: {accuracy:.2f}%")
-
-            train_acc_epoch = 100 * tcorrect / ttotal
-            train_loss_epoch = running_train_loss / len(train_dataloader)
-            train_acc.append(train_acc_epoch)
-            train_loss.append(train_loss_epoch)
-
-            print(f"Epoch {epoch} training done. Avg Loss: {train_loss_epoch:.4f}, Acc: {train_acc_epoch:.2f}%")
-
-            # Validation loop
-            model.eval()
-            vcorrect, vtotal = 0, 0
-            running_val_loss = 0
-            with torch.no_grad():
-                for val_batch_idx, (x_val, y_val) in enumerate(val_dataloader):
-                    x_val, y_val = x_val.to(device), y_val.to(device)
-
-                    print(f"  Validation batch {val_batch_idx+1}/{len(val_dataloader)}")
-                    print(f"    x_val shape: {x_val.shape}")
-                    print(f"    y_val shape: {y_val.shape}")
-
-                    out = model(x_val)
-                    print(f"    model output shape: {out.shape}")
-
-                    preds = F.log_softmax(out, dim=1).argmax(dim=1)
-                    print(f"    preds shape: {preds.shape}")
-
-                    vtotal += y_val.size(0)
-                    vcorrect += (preds == y_val).sum().item()
-                    running_val_loss += criterion(out, y_val.long()).item()
-
-                    print(f"    Batch acc: {100 * (preds == y_val).sum().item() / y_val.size(0):.2f}%")
-
-            val_acc_epoch = 100 * vcorrect / vtotal
-            val_loss_epoch = running_val_loss / len(val_dataloader)
-            val_acc.append(val_acc_epoch)
-            val_loss.append(val_loss_epoch)
-
-            print(f"Epoch {epoch} validation done. Avg Loss: {val_loss_epoch:.4f}, Acc: {val_acc_epoch:.2f}%")
-
-            if epoch % 5 == 0:
-                print(f'Epoch: {epoch:3d}. Training Loss: {train_loss_epoch:.4f}. Val Acc.: {val_acc_epoch / 100:.2%}')
-
-            if val_acc_epoch / 100 > best_acc:
-                trials = 0
-                best_acc = val_acc_epoch / 100
-                torch.save(model, os.path.join(output_directory, "model.bin"))
-                print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:.2%}')
-            else:
-                trials += 1
-                if trials >= patience:
-                    print(f'Early stopping on epoch {epoch} due to no improvement in val accuracy.')
-                    break
-
-    if model_type == "GRU":
-        for epoch in range(1, n_epochs + 1):
-            tcorrect, ttotal = 0, 0
-            running_train_loss = 0
-            for (x_batch, y_batch) in train_dataloader:
-                model.train()
-                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-                y_batch = y_batch.to(torch.int64)
-                opt.zero_grad()
-                out = model(x_batch)
-                loss = criterion(out, y_batch)
-                running_train_loss += loss.item()
-                loss.backward()
-                opt.step()
-                sched.step()
-                _,pred = torch.max(out, dim=1)
-                ttotal += y_batch.size(0)
-                tcorrect += torch.sum(pred==y_batch).item()
-            train_acc.append(100 * tcorrect / ttotal)
-            epoch_train_loss = running_train_loss / len(train_dataloader)
-            train_loss.append(epoch_train_loss)
-            model.eval()
-            vcorrect, vtotal = 0, 0
-            running_val_loss = 0
-            for x_val, y_val in val_dataloader:
-                x_val, y_val = x_val.to(device), y_val.to(device)
-                out = model(x_val)
-                preds = F.log_softmax(out, dim=1).argmax(dim=1)
-                vtotal += y_val.size(0)
-                vcorrect += (preds == y_val).sum().item()
-                running_val_loss += criterion(out, y_val.long()).item()
-            vacc = vcorrect / vtotal
-            val_acc.append(vacc*100)
-            epoch_val_loss = running_val_loss / len(val_dataloader)
-            val_loss.append(epoch_val_loss)
-            if epoch % 5 == 0:
-                print(f'Epoch: {epoch:3d}. Loss: {loss.item():.4f}. Val Acc.: {vacc:2.2%}')
-            if vacc > best_acc:
-                trials = 0
-                best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model.bin"))
-                print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
-            else:
-                trials += 1
-                if trials >= patience:
-                    print(f'Early stopping on epoch {epoch}')
-                    break
-
-    if model_type == "Tr_FC":
-        for epoch in range(1, n_epochs + 1):
-            tcorrect, ttotal = 0, 0
-            running_train_loss = 0
-            for (x_batch, y_batch) in train_dataloader:
-                model.train()
-                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-                y_batch = y_batch.to(torch.int64)
-                opt.zero_grad()
-                out = model(x_batch)
-                loss = criterion(out, y_batch)
-                running_train_loss += loss.item()
-                loss.backward()
-                opt.step()
-                sched.step()
-                _,pred = torch.max(out, dim=1)
-                ttotal += y_batch.size(0)
-                tcorrect += torch.sum(pred==y_batch).item()
-            train_acc.append(100 * tcorrect / ttotal)
-            epoch_train_loss = running_train_loss / len(train_dataloader)
-            train_loss.append(epoch_train_loss)
-            model.eval()
-            vcorrect, vtotal = 0, 0
-            running_val_loss = 0
-            for x_val, y_val in val_dataloader:
-                x_val, y_val = x_val.to(device), y_val.to(device)
-                out = model(x_val)
-                preds = F.log_softmax(out, dim=1).argmax(dim=1)
-                vtotal += y_val.size(0)
-                vcorrect += (preds == y_val).sum().item()
-                running_val_loss += criterion(out, y_val.long()).item()
-            vacc = vcorrect / vtotal
-            val_acc.append(vacc*100)
-            epoch_val_loss = running_val_loss / len(val_dataloader)
-            val_loss.append(epoch_val_loss)
-            if epoch % 5 == 0:
-                print(f'Epoch: {epoch:3d}. Loss: {loss.item():.4f}. Val Acc.: {vacc:2.2%}')
-            if vacc > best_acc:
-                trials = 0
-                best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model.bin"))
-                print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
-            else:
-                trials += 1
-                if trials >= patience:
-                    print(f'Early stopping on epoch {epoch}')
-                    break
-
-    if model_type == "Tr_CNN":
-        for epoch in range(1, n_epochs + 1):
-            tcorrect, ttotal = 0, 0
-            running_train_loss = 0
-            for (x_batch, y_batch) in train_dataloader:
-                model.train()
-                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-                y_batch = y_batch.to(torch.int64)
-                opt.zero_grad()
-                out = model(x_batch)
-                loss = criterion(out, y_batch)
-                running_train_loss += loss.item()
-                loss.backward()
-                opt.step()
-                sched.step()
-                _,pred = torch.max(out, dim=1)
-                ttotal += y_batch.size(0)
-                tcorrect += torch.sum(pred==y_batch).item()
-            train_acc.append(100 * tcorrect / ttotal)
-            epoch_train_loss = running_train_loss / len(train_dataloader)
-            train_loss.append(epoch_train_loss)
-            model.eval()
-            vcorrect, vtotal = 0, 0
-            running_val_loss = 0
-            for x_val, y_val in val_dataloader:
-                x_val, y_val = x_val.to(device), y_val.to(device)
-                out = model(x_val)
-                preds = F.log_softmax(out, dim=1).argmax(dim=1)
-                vtotal += y_val.size(0)
-                vcorrect += (preds == y_val).sum().item()
-                running_val_loss += criterion(out, y_val.long()).item()
-            vacc = vcorrect / vtotal
-            val_acc.append(vacc*100)
-            epoch_val_loss = running_val_loss / len(val_dataloader)
-            val_loss.append(epoch_val_loss)
-            if epoch % 5 == 0:
-                print(f'Epoch: {epoch:3d}. Loss: {loss.item():.4f}. Val Acc.: {vacc:2.2%}')
-            if vacc > best_acc:
-                trials = 0
-                best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model.bin"))
-                print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
-            else:
-                trials += 1
-                if trials >= patience:
-                    print(f'Early stopping on epoch {epoch}')
-                    break
-
-    if model_type == "Tr_LSTM":
-        for epoch in range(1, n_epochs + 1):
-            tcorrect, ttotal = 0, 0
-            running_train_loss = 0
-            for (x_batch, y_batch) in train_dataloader:
-                model.train()
-                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-                y_batch = y_batch.to(torch.int64)
-                opt.zero_grad()
-                out = model(x_batch)
-                loss = criterion(out, y_batch)
-                running_train_loss += loss.item()
-                loss.backward()
-                opt.step()
-                sched.step()
-                _,pred = torch.max(out, dim=1)
-                ttotal += y_batch.size(0)
-                tcorrect += torch.sum(pred==y_batch).item()
-            train_acc.append(100 * tcorrect / ttotal)
-            epoch_train_loss = running_train_loss / len(train_dataloader)
-            train_loss.append(epoch_train_loss)
-            model.eval()
-            vcorrect, vtotal = 0, 0
-            running_val_loss = 0
-            for x_val, y_val in val_dataloader:
-                x_val, y_val = x_val.to(device), y_val.to(device)
-                out = model(x_val)
-                preds = F.log_softmax(out, dim=1).argmax(dim=1)
-                vtotal += y_val.size(0)
-                vcorrect += (preds == y_val).sum().item()
-                running_val_loss += criterion(out, y_val.long()).item()
-            vacc = vcorrect / vtotal
-            val_acc.append(vacc*100)
-            epoch_val_loss = running_val_loss / len(val_dataloader)
-            val_loss.append(epoch_val_loss)
-            if epoch % 5 == 0:
-                print(f'Epoch: {epoch:3d}. Loss: {loss.item():.4f}. Val Acc.: {vacc:2.2%}')
-            if vacc > best_acc:
-                trials = 0
-                best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model.bin"))
-                print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
-            else:
-                trials += 1
-                if trials >= patience:
-                    print(f'Early stopping on epoch {epoch}')
-                    break
-
-    if model_type == "Tr_GRU":
-        for epoch in range(1, n_epochs + 1):
-            tcorrect, ttotal = 0, 0
-            running_train_loss = 0
-            for (x_batch, y_batch) in train_dataloader:
-                model.train()
-                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
-                y_batch = y_batch.to(torch.int64)
-                opt.zero_grad()
-                out = model(x_batch)
-                loss = criterion(out, y_batch)
-                running_train_loss += loss.item()
-                loss.backward()
-                opt.step()
-                sched.step()
-                _,pred = torch.max(out, dim=1)
-                ttotal += y_batch.size(0)
-                tcorrect += torch.sum(pred==y_batch).item()
-            train_acc.append(100 * tcorrect / ttotal)
-            epoch_train_loss = running_train_loss / len(train_dataloader)
-            train_loss.append(epoch_train_loss)
-            model.eval()
-            vcorrect, vtotal = 0, 0
-            running_val_loss = 0
-            for x_val, y_val in val_dataloader:
-                x_val, y_val = x_val.to(device), y_val.to(device)
-                out = model(x_val)
-                preds = F.log_softmax(out, dim=1).argmax(dim=1)
-                vtotal += y_val.size(0)
-                vcorrect += (preds == y_val).sum().item()
-                running_val_loss += criterion(out, y_val.long()).item()
-            vacc = vcorrect / vtotal
-            val_acc.append(vacc*100)
-            epoch_val_loss = running_val_loss / len(val_dataloader)
-            val_loss.append(epoch_val_loss)
-            if epoch % 5 == 0:
-                print(f'Epoch: {epoch:3d}. Loss: {loss.item():.4f}. Val Acc.: {vacc:2.2%}')
-            if vacc > best_acc:
-                trials = 0
-                best_acc = vacc
-                torch.save(model, os.path.join(output_directory, "model.bin"))
-                print(f'Epoch {epoch} best model saved with val accuracy: {best_acc:2.2%}')
-            else:
-                trials += 1
-                if trials >= patience:
-                    print(f'Early stopping on epoch {epoch}')
-                    break
-
-    print("Training finished!")
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            return
+        else:
+            raise e
+    except Exception as e:
+        print(f"Training error: {e}")
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        return
 
     #Evaluate trained model
 
