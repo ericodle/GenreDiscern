@@ -1,3 +1,0 @@
-batch_size,hidden_size,num_layers,dropout,optimizer,initial_lr,init,class_weight,epoch_patience,output_dir,test_accuracy,run_number
-64,32,1,0.1,adam,0.01,xavier,auto,3,./output/gridsearch/bs64_hs32_nl1_do0p1_optadam_lr0p01_initxavier_cwauto_ep3,0.7717171717171717,1
-64,32,1,0.1,adam,0.01,xavier,auto,4,./output/gridsearch/bs64_hs32_nl1_do0p1_optadam_lr0p01_initxavier_cwauto_ep4,0.8606060606060606,2

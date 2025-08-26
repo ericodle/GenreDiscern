@@ -26,12 +26,6 @@ Music genre discriminator via artificial neural network modeling
   cd GenreDiscern
   ```
 
-Bonus tip: open in VSCode.
-
-  ```sh
-  code .
-  ```
-
 #### Step 2: Set up a virtual environment.
 
   ```sh
